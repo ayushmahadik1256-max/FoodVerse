@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" width="800" height="480">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap');
+      .heading {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700;
+        fill: #f8fafc;
+      }
+      .body {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 400;
+        fill: #94a3b8;
+      }
+      .badge-text {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+      }
+      .specimen {
+        font-family: 'Space Grotesk', sans-serif;
+        letter-spacing: 2px;
+      }
+    </style>
+    <linearGradient id="bg-5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141416" />
+      <stop offset="60%" stop-color="#0c0d0e" />
+      <stop offset="100%" stop-color="#1c1917" />
+    </linearGradient>
+    <linearGradient id="glow-5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0" />
+    </linearGradient>
+    <filter id="shadow-5" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <!-- Background Card -->
+  <rect x="0" y="0" width="800" height="480" rx="28" fill="url(#bg-5)" stroke="#292524" stroke-width="2" />
+  
+  <!-- Subtle Ambient Glow -->
+  <circle cx="700" cy="80" r="220" fill="url(#glow-5)" />
+  <circle cx="80" cy="400" r="160" fill="url(#glow-5)" opacity="0.4" />
+
+  <!-- Top Bar: Option Pill & Category -->
+  <g transform="translate(48, 44)">
+    <!-- Option Number Pill -->
+    <rect x="0" y="0" width="105" height="32" rx="16" fill="#3b82f6" />
+    <text x="52" y="21" text-anchor="middle" class="badge-text" font-size="12" fill="#ffffff">OPTION 5</text>
+
+    <!-- Category Tag -->
+    <rect x="117" y="0" width="220" height="32" rx="16" fill="#262626" stroke="#404040" stroke-width="1" />
+    <text x="227" y="20" text-anchor="middle" class="badge-text" font-size="10.5" fill="#e5e5e5">TECH-FORWARD & DISTINCTIVE</text>
+
+    <!-- Font Family Meta in top right -->
+    <text x="704" y="21" text-anchor="end" class="body" font-size="13" fill="#a8a29e">
+      <tspan font-weight="600" fill="#f5f5f4">Space Grotesk</tspan> + <tspan font-weight="500">Plus Jakarta Sans</tspan>
+    </text>
+  </g>
+
+  <!-- Inner Specimen Preview Box -->
+  <g transform="translate(48, 100)" filter="url(#shadow-5)">
+    <rect x="0" y="0" width="704" height="260" rx="20" fill="#1c1917" stroke="#38332e" stroke-width="1.5" />
+
+    <!-- Dish Title Header -->
+    <text x="36" y="58" class="heading" font-size="28" letter-spacing="-0.5">Hyper-Crisp Baja Fish Tacos</text>
+
+    <!-- Price Tag & Rating Row -->
+    <g transform="translate(36, 86)">
+      <rect x="0" y="0" width="82" height="28" rx="8" fill="#3b82f6" opacity="0.18" />
+      <text x="41" y="19" text-anchor="middle" class="heading" font-size="15" fill="#3b82f6">₹320</text>
+
+      <text x="100" y="19" class="body" font-size="14" fill="#fbbf24">★ 4.7 (950+)</text>
+      <text x="210" y="19" class="body" font-size="13" fill="#78716c">• Chef's Special Gourmet Blend</text>
+    </g>
+
+    <!-- Food Description Paragraph -->
+    <foreignObject x="36" y="130" width="632" height="60">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14.5px; line-height: 1.55; color: #d6d3d1;">
+        Tempura beer-battered fresh catch, charred corn & cabbage slaw, smoked chipotle crema, cotija cheese in handmade stone-ground tortillas.
+      </div>
+    </foreignObject>
+
+    <!-- Divider Line -->
+    <line x1="36" y1="205" x2="668" y2="205" stroke="#2e2a26" stroke-width="1.5" />
+
+    <!-- Alphabet & Numeric Glyph Strip -->
+    <text x="36" y="235" class="specimen" font-size="13" fill="#3b82f6">
+      Aa Bb Cc Dd Ee Gg Hh Rr 1234567890 • ₹ $ % &amp; ★
+    </text>
+  </g>
+
+  <!-- Bottom CTA and Selection Prompt -->
+  <g transform="translate(48, 396)">
+    <!-- Category description -->
+    <text x="0" y="24" class="body" font-size="13" fill="#78716c">
+      Recommended for: <tspan fill="#d6d3d1" font-weight="500">Neo-Grotesque & Bold FoodVerse</tspan>
+    </text>
+
+    <!-- Select Action Button Simulation -->
+    <g transform="translate(560, 0)">
+      <rect x="0" y="0" width="144" height="42" rx="14" fill="#3b82f6" />
+      <text x="72" y="26" text-anchor="middle" class="badge-text" font-size="12" fill="#ffffff">CHOOSE OPTION 5</text>
+    </g>
+  </g>
+</svg>

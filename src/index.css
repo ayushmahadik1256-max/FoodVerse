@@ -1,0 +1,382 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-brand-50: #fef2f2;
+  --color-brand-100: #fee2e2;
+  --color-brand-200: #fecaca;
+  --color-brand-300: #fca5a5;
+  --color-brand-400: #f87171;
+  --color-brand-500: #ef4444;
+  --color-brand-600: #dc2626;
+  --color-brand-700: #b91c1c;
+  --color-brand-800: #991b1b;
+  --color-brand-900: #7f1d1d;
+  --color-brand-950: #450a0a;
+
+  --color-orange-50: #fef2f2;
+  --color-orange-100: #fee2e2;
+  --color-orange-200: #fecaca;
+  --color-orange-300: #fca5a5;
+  --color-orange-400: #f87171;
+  --color-orange-500: #ef4444;
+  --color-orange-600: #dc2626;
+  --color-orange-700: #b91c1c;
+  --color-orange-800: #991b1b;
+  --color-orange-900: #7f1d1d;
+  --color-orange-950: #450a0a;
+}
+
+:root {
+  --font-heading: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+html[data-font="syne-inter"] {
+  --font-heading: 'Syne', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+html[data-font="playfair-jakarta"] {
+  --font-heading: 'Playfair Display', Georgia, serif;
+  --font-body: 'Plus Jakarta Sans', sans-serif;
+}
+
+html[data-font="urbanist"] {
+  --font-heading: 'Urbanist', sans-serif;
+  --font-body: 'Urbanist', sans-serif;
+}
+
+html[data-font="fraunces-dmsans"] {
+  --font-heading: 'Fraunces', Georgia, serif;
+  --font-body: 'DM Sans', sans-serif;
+}
+
+html[data-font="space-jakarta"] {
+  --font-heading: 'Space Grotesk', sans-serif;
+  --font-body: 'Plus Jakarta Sans', sans-serif;
+}
+
+html[data-font="outfit-jakarta"] {
+  --font-heading: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+  --font-body: 'Plus Jakarta Sans', sans-serif;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-body);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+}
+
+/* Custom smooth scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.5);
+}
+
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+/* 3D Typography & Dimensional Lighting */
+.text-3d-title {
+  position: relative;
+  text-shadow: 
+    0 1px 0 #fed7aa,
+    0 2px 0 #fdba74,
+    0 3px 0 #fb923c,
+    0 4px 0 #f97316,
+    0 5px 0 #ea580c,
+    0 6px 0 #c2410c,
+    0 7px 0 #9a3412,
+    0 8px 0 #7c2d12,
+    0 9px 2px rgba(67, 20, 7, 0.45),
+    0 12px 18px rgba(154, 52, 18, 0.35),
+    0 18px 28px rgba(0, 0, 0, 0.15);
+  letter-spacing: -0.02em;
+}
+
+.text-3d-title::after {
+  content: '';
+  position: absolute;
+  inset: -4px -8px -12px -8px;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    transparent 35%,
+    rgba(255, 255, 255, 0.2) 42%,
+    rgba(255, 248, 220, 0.85) 49%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(255, 215, 130, 0.8) 51%,
+    rgba(255, 255, 255, 0.2) 58%,
+    transparent 65%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  mix-blend-mode: overlay;
+  -webkit-mask-image: linear-gradient(
+    115deg,
+    transparent 0%,
+    transparent 38%,
+    rgba(0, 0, 0, 0.7) 46%,
+    #000000 50%,
+    rgba(0, 0, 0, 0.7) 54%,
+    transparent 62%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    115deg,
+    transparent 0%,
+    transparent 38%,
+    rgba(0, 0, 0, 0.7) 46%,
+    #000000 50%,
+    rgba(0, 0, 0, 0.7) 54%,
+    transparent 62%,
+    transparent 100%
+  );
+  -webkit-mask-size: 220% 100%;
+  mask-size: 220% 100%;
+  animation: metallicShineGlide 5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.dark .text-3d-title {
+  text-shadow: 
+    0 1px 0 #fed7aa,
+    0 2px 0 #ea580c,
+    0 3px 0 #c2410c,
+    0 4px 0 #9a3412,
+    0 5px 0 #7c2d12,
+    0 6px 0 #431407,
+    0 7px 0 #2a0b04,
+    0 8px 0 #180502,
+    0 9px 3px rgba(0, 0, 0, 0.75),
+    0 14px 22px rgba(249, 115, 22, 0.25),
+    0 22px 34px rgba(0, 0, 0, 0.85);
+  letter-spacing: -0.02em;
+}
+
+.dark .text-3d-title::after {
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    transparent 35%,
+    rgba(254, 215, 170, 0.2) 42%,
+    rgba(255, 255, 255, 0.9) 49%,
+    rgba(254, 243, 199, 0.95) 50%,
+    rgba(251, 146, 60, 0.75) 51%,
+    rgba(254, 215, 170, 0.2) 58%,
+    transparent 65%,
+    transparent 100%
+  );
+  mix-blend-mode: screen;
+}
+
+@keyframes metallicShineGlide {
+  0% {
+    background-position: -120% 0;
+    -webkit-mask-position: -120% 0;
+    mask-position: -120% 0;
+    opacity: 0;
+  }
+  3% {
+    opacity: 1;
+  }
+  28% {
+    background-position: 120% 0;
+    -webkit-mask-position: 120% 0;
+    mask-position: 120% 0;
+    opacity: 1;
+  }
+  32%, 100% {
+    background-position: 120% 0;
+    -webkit-mask-position: 120% 0;
+    mask-position: 120% 0;
+    opacity: 0;
+  }
+}
+
+/* Entrance Animation Utilities (Tailwind animate-in, fade-in, zoom-in) */
+@keyframes enterAnimation {
+  0% {
+    opacity: var(--tw-enter-opacity, 0);
+    transform: scale3d(var(--tw-enter-scale, 0.95), var(--tw-enter-scale, 0.95), 1) translateY(var(--tw-enter-translate-y, 10px));
+  }
+  100% {
+    opacity: 1;
+    transform: scale3d(1, 1, 1) translateY(0);
+  }
+}
+
+.animate-in {
+  animation-name: enterAnimation;
+  animation-duration: 1000ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  --tw-enter-opacity: 0;
+}
+
+.zoom-in {
+  --tw-enter-scale: 0.95;
+}
+
+.duration-1000 {
+  animation-duration: 1000ms;
+}
+
+/* Custom Infinite 3D Floating Animation Keyframes (Gentle Y translation) */
+@keyframes floatGentleY {
+  0%, 100% {
+    transform: translateY(0px);
+    translate: 0 0px;
+  }
+  50% {
+    transform: translateY(-9px);
+    translate: 0 -9px;
+  }
+}
+
+.animate-float-3d {
+  animation: floatGentleY 3.8s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: floatGentleY 3.8s ease-in-out infinite;
+}
+
+.text-3d-gradient {
+  background: linear-gradient(135deg, #ff7a18 0%, #ea580c 45%, #e11d48 75%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 0 #991b1b) drop-shadow(0 4px 2px rgba(127, 29, 29, 0.8)) drop-shadow(0 10px 20px rgba(234, 88, 12, 0.45));
+  letter-spacing: -0.02em;
+}
+
+.ambient-glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(52px);
+  pointer-events: none;
+  opacity: 0.55;
+  transition: transform 0.2s ease-out;
+}
+
+.card-3d-float {
+  transform: perspective(1000px) rotateX(2deg) rotateY(-1.5deg);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease;
+}
+.card-3d-float:hover {
+  transform: perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(-2px);
+}
+
+/* ==========================================================================
+   3D Realistic Multi-Layer Shadows & Hover Elevation
+   ========================================================================== */
+
+/* 3D Realistic Card Elevation */
+.shadow-3d-card {
+  box-shadow: 
+    0 2px 4px -1px rgba(0, 0, 0, 0.04),
+    0 6px 12px -2px rgba(0, 0, 0, 0.05),
+    0 16px 28px -4px rgba(0, 0, 0, 0.07),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
+}
+
+.dark .shadow-3d-card {
+  box-shadow: 
+    0 2px 4px -1px rgba(0, 0, 0, 0.35),
+    0 8px 16px -2px rgba(0, 0, 0, 0.4),
+    0 20px 36px -4px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.shadow-3d-card:hover {
+  transform: translateY(-8px) scale(1.015);
+  box-shadow: 
+    0 8px 16px -2px rgba(0, 0, 0, 0.08),
+    0 20px 32px -4px rgba(0, 0, 0, 0.12),
+    0 36px 64px -8px rgba(249, 115, 22, 0.18),
+    0 0 0 1.5px rgba(249, 115, 22, 0.35);
+}
+
+.dark .shadow-3d-card:hover {
+  transform: translateY(-8px) scale(1.015);
+  box-shadow: 
+    0 10px 20px -2px rgba(0, 0, 0, 0.5),
+    0 26px 42px -4px rgba(0, 0, 0, 0.65),
+    0 40px 76px -8px rgba(249, 115, 22, 0.3),
+    0 0 0 1.5px rgba(249, 115, 22, 0.5);
+}
+
+/* 3D Tactile Push Button */
+.shadow-3d-btn {
+  position: relative;
+  box-shadow: 
+    0 4px 0 #c2410c,
+    0 8px 18px rgba(234, 88, 12, 0.35);
+  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.shadow-3d-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 6px 0 #c2410c,
+    0 12px 24px rgba(234, 88, 12, 0.45);
+}
+
+.shadow-3d-btn:active {
+  transform: translateY(3px);
+  box-shadow: 
+    0 1px 0 #c2410c,
+    0 4px 10px rgba(234, 88, 12, 0.3);
+}
+
+/* 3D Floating Glow Effect */
+.shadow-3d-glow {
+  box-shadow: 
+    0 10px 25px -5px rgba(249, 115, 22, 0.35),
+    0 8px 10px -6px rgba(249, 115, 22, 0.2);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+}
+
+.shadow-3d-glow:hover {
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: 
+    0 22px 40px -5px rgba(249, 115, 22, 0.5),
+    0 14px 18px -6px rgba(249, 115, 22, 0.3);
+}
+
+/* 3D Deep Frame Container */
+.shadow-3d-frame {
+  box-shadow: 
+    0 25px 65px -15px rgba(0, 0, 0, 0.85),
+    0 0 45px rgba(249, 115, 22, 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  transition: box-shadow 0.5s ease, border-color 0.5s ease;
+}
+
+.shadow-3d-frame:hover {
+  box-shadow: 
+    0 35px 85px -15px rgba(0, 0, 0, 0.95),
+    0 0 60px rgba(249, 115, 22, 0.28),
+    inset 0 1px 2px rgba(255, 255, 255, 0.15);
+}
+

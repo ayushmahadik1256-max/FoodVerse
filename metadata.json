@@ -1,0 +1,6 @@
+{
+  "name": "FoodVerse - 3D Food Delivery",
+  "description": "A gourmet food delivery and restaurant discovery platform featuring authentic high-definition dish photography, live scooter tracking, multi-role dashboards, and instant cart checkout.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
