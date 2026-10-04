@@ -2,6 +2,12 @@ import 'dotenv/config';
 import express from 'express';
 import mongoose from 'mongoose';
 import admin from 'firebase-admin';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map((value) => value.trim()).filter(Boolean);
@@ -18,11 +24,61 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: '1mb' }));
 
-const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+function getFirebaseCredential() {
+  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (serviceAccount) {
+    try {
+      return admin.credential.cert(JSON.parse(serviceAccount));
+    } catch (e) {
+      console.warn('Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:', e.message);
+    }
+  }
+
+  const rawPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (rawPath) {
+    const candidates = [
+      rawPath,
+      `${rawPath}.json`,
+      path.resolve(process.cwd(), rawPath),
+      path.resolve(process.cwd(), `${rawPath}.json`),
+      path.resolve(__dirname, rawPath),
+      path.resolve(__dirname, `${rawPath}.json`),
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        try {
+          const serviceAccountObj = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+          process.env.GOOGLE_APPLICATION_CREDENTIALS = candidate;
+          console.log(`Loaded Firebase Admin credentials from: ${candidate}`);
+          return admin.credential.cert(serviceAccountObj);
+        } catch (e) {
+          console.warn(`Error reading credential file at ${candidate}:`, e.message);
+        }
+      }
+    }
+  }
+
+  try {
+    const files = fs.readdirSync(__dirname);
+    const discovered = files.find((f) => f.includes('firebase-adminsdk') && f.endsWith('.json'));
+    if (discovered) {
+      const fullPath = path.resolve(__dirname, discovered);
+      const serviceAccountObj = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = fullPath;
+      console.log(`Auto-detected Firebase Admin credentials at: ${fullPath}`);
+      return admin.credential.cert(serviceAccountObj);
+    }
+  } catch {
+    // ignore directory scan errors
+  }
+
+  return admin.credential.applicationDefault();
+}
+
 if (!admin.apps.length) {
-  admin.initializeApp(serviceAccount
-    ? { credential: admin.credential.cert(JSON.parse(serviceAccount)) }
-    : { credential: admin.credential.applicationDefault() });
+  admin.initializeApp({
+    credential: getFirebaseCredential(),
+  });
 }
 
 const userSchema = new mongoose.Schema({
@@ -70,7 +126,12 @@ app.post('/api/profile/bootstrap', async (req, res) => {
     const authorization = req.headers.authorization || '';
     const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
     if (!token) return res.status(401).json({ error: 'Authentication required.' });
-    const decoded = await admin.auth().verifyIdToken(token);
+    let decoded;
+    try {
+      decoded = await admin.auth().verifyIdToken(token);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired authentication token.' });
+    }
     const email = (decoded.email || '').toLowerCase();
     const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean);
     const user = await User.findOneAndUpdate(
