@@ -35,6 +35,7 @@ import {
   Check,
   Zap,
   Percent,
+  Camera,
 } from 'lucide-react';
 
 interface CustomerDashboardProps {
@@ -42,6 +43,7 @@ interface CustomerDashboardProps {
   onOpenCart: () => void;
   onTrackOrder: (order: Order) => void;
   onExploreDishes: () => void;
+  onOpenProfileEditor?: () => void;
   initialTab?: 'orders' | 'favorites' | 'loyalty' | 'addresses';
 }
 
@@ -50,6 +52,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
   onOpenCart,
   onTrackOrder,
   onExploreDishes,
+  onOpenProfileEditor,
   initialTab = 'orders',
 }) => {
   const {
@@ -208,13 +211,22 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
 
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
-            <div className="relative">
+            <div
+              className={`relative group ${onOpenProfileEditor ? 'cursor-pointer' : ''}`}
+              onClick={onOpenProfileEditor}
+              title={onOpenProfileEditor ? 'Click to change avatar' : undefined}
+            >
               <img
                 src={currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                 alt={currentUser.name}
-                className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-orange-500/40 shadow-lg"
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-orange-500/40 shadow-lg group-hover:border-orange-400 transition-all"
                 referrerPolicy="no-referrer"
               />
+              {onOpenProfileEditor && (
+                <div className="absolute inset-0 bg-black/45 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                  <Camera className="w-5 h-5" />
+                </div>
+              )}
               <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-stone-950 font-black text-xs shadow-md">
                 ★
               </div>
@@ -249,9 +261,19 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
 
           {/* Quick Action Navigation */}
           <div className="flex flex-wrap items-center gap-2 self-stretch md:self-center">
+            {onOpenProfileEditor && (
+              <button
+                type="button"
+                onClick={onOpenProfileEditor}
+                className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all flex items-center gap-1.5 backdrop-blur-sm cursor-pointer"
+              >
+                <Camera className="w-3.5 h-3.5 text-orange-400" />
+                <span>Change Photo</span>
+              </button>
+            )}
             <button
               onClick={() => onExploreDishes()}
-              className="px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 transition-all flex items-center gap-1.5"
+              className="px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <ShoppingBag className="w-3.5 h-3.5" />
               <span>Explore Restaurants</span>
@@ -597,7 +619,7 @@ export const CustomerDashboard: React.FC<CustomerDashboardProps> = ({
                         <div className="flex flex-wrap items-center gap-3 text-stone-500 dark:text-stone-400">
                           <span className="flex items-center gap-1">
                             <MapPin className="w-3.5 h-3.5 text-stone-400" />
-                            <span>{order.deliveryAddress?.street || 'Indiranagar, Bengaluru'}</span>
+                            <span>{order.deliveryAddress?.street || 'Shivaji Chowk, Islampur'}</span>
                           </span>
                           {order.loyaltyPointsEarned && order.loyaltyPointsEarned > 0 && (
                             <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">

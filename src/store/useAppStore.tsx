@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   User,
   UserRole,
@@ -23,7 +23,33 @@ import {
 } from '../data/mockData';
 import { onAuthStateChanged } from 'firebase/auth';
 import { createAccount, confirmPhoneCode, firebaseAuth, requestPasswordReset, requestPhoneCode, signIn, signOutFirebase } from '../services/firebaseAuth';
-import { listPersistedOrders, loadAccountProfile, persistOrder, saveAccountProfile } from '../services/accountApi';
+import {
+  loadAccountProfile,
+  saveAccountProfile,
+  fetchRestaurants,
+  fetchMenuItems,
+  fetchCoupons,
+  fetchReviews,
+  fetchOrders,
+  fetchOrderById,
+  submitOrder,
+  updateOrderStatusApi,
+  cancelOrderApi,
+  reportOrderIssueApi,
+  postReview,
+  voteReview,
+  postOwnerReply,
+  updateRestaurantProfile,
+  setRestaurantApproval,
+  saveMenuItem,
+  modifyMenuItem,
+  removeMenuItem,
+  saveCoupon,
+  removeCouponApi,
+  listPersistedOrders,
+  persistOrder,
+  updatePersistedOrderStatus,
+} from '../services/accountApi';
 
 export interface NotificationItem {
   id: string;
@@ -41,6 +67,7 @@ interface AppContextType {
   menuItems: MenuItem[];
   cart: OrderItem[];
   orders: Order[];
+  refreshOrders: () => Promise<void>;
   activeTrackingOrder: Order | null;
   coupons: Coupon[];
   appliedCoupon: Coupon | null;
@@ -115,14 +142,21 @@ interface AppContextType {
   createOrder: (
     address: Address,
     paymentMethod: 'razorpay' | 'cod' | 'upi' | 'card' | 'wallet',
-    options?: { deliveryInstructions?: string; tipAmount?: number; scheduledFor?: string }
+    options?: {
+      deliveryInstructions?: string;
+      tipAmount?: number;
+      scheduledFor?: string;
+      paymentStatus?: string;
+      paymentId?: string;
+      paymentVerified?: boolean;
+    }
   ) => Promise<Order>;
-  cancelOrder: (orderId: string, reason: string) => { success: boolean; message: string; refundAmount: number };
+  cancelOrder: (orderId: string, reason: string) => Promise<{ success: boolean; message: string; refundAmount: number }>;
   reportOrderIssue: (
     orderId: string,
     issueType: string,
     description: string
-  ) => { success: boolean; ticketId: string; compensation: number };
+  ) => Promise<{ success: boolean; ticketId: string; compensation: number }>;
   reorderOrder: (order: Order, replaceCart?: boolean) => void;
   updateOrderStatus: (orderId: string, status: OrderStatus, partnerLocation?: [number, number]) => void;
   completeOrder: (orderId: string) => void;
@@ -200,18 +234,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed: Restaurant[] = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const mockMap = new Map(MOCK_RESTAURANTS.map((r) => [r.id, r]));
-          const merged = parsed.map((r) => {
-            const mock = mockMap.get(r.id);
-            if (mock) {
-              return { ...r, cuisines: Array.from(new Set([...r.cuisines, ...mock.cuisines])) };
-            }
-            return r;
-          });
-          const existingIds = new Set(merged.map((r) => r.id));
-          const missing = MOCK_RESTAURANTS.filter((r) => !existingIds.has(r.id));
-          return [...merged, ...missing];
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((r) => r.location?.city === 'Islampur')) {
+          return parsed;
         }
       } catch {
         // ignore
@@ -232,6 +256,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (mock) {
               return {
                 ...m,
+                image: mock.image,
                 category: mock.category,
                 has3DModel: mock.has3DModel ?? m.has3DModel,
                 modelType: mock.modelType ?? m.modelType,
@@ -301,7 +326,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return MOCK_REVIEWS;
   });
 
-  const [selectedCity, setSelectedCity] = useState<string>('Bengaluru');
+  const [selectedCity, setSelectedCity] = useState<string>('Islampur');
   const [inspecting3DItem, setInspecting3DItem] = useState<MenuItem | null>(null);
   const [customizingItem, setCustomizingItem] = useState<MenuItem | null>(null);
   const [viewingInvoiceOrder, setViewingInvoiceOrder] = useState<Order | null>(null);
@@ -361,12 +386,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       try {
         setCurrentUser(await loadAccountProfile(firebaseUser.displayName || ''));
-        setOrders((await listPersistedOrders()) as Order[]);
+        setOrders((await fetchOrders()) as Order[]);
       } catch (error) {
         addNotification('Account profile unavailable', error instanceof Error ? error.message : 'Please try again.', 'warning');
       }
     });
   }, []);
+
+  // Fetch persistent business data from backend
+  useEffect(() => {
+    let active = true;
+    fetchRestaurants().then((rests) => {
+      if (active && Array.isArray(rests) && rests.length > 0) setRestaurants(rests);
+    }).catch(() => {});
+    fetchMenuItems().then((items) => {
+      if (active && Array.isArray(items) && items.length > 0) setMenuItems(items);
+    }).catch(() => {});
+    fetchCoupons().then((coups) => {
+      if (active && Array.isArray(coups) && coups.length > 0) setCoupons(coups);
+    }).catch(() => {});
+    fetchReviews().then((revs) => {
+      if (active && Array.isArray(revs) && revs.length > 0) setReviews(revs);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  // Server-authoritative live order tracking polling
+  useEffect(() => {
+    if (!activeTrackingOrder?.id || activeTrackingOrder.status === 'delivered' || activeTrackingOrder.status === 'cancelled') {
+      return;
+    }
+    const timer = setInterval(() => {
+      fetchOrderById(activeTrackingOrder.id)
+        .then((latest) => {
+          if (latest && (latest.status !== activeTrackingOrder.status || JSON.stringify(latest.currentLocation) !== JSON.stringify(activeTrackingOrder.currentLocation))) {
+            setActiveTrackingOrder(latest);
+            setOrders((prev) => prev.map((o) => (o.id === latest.id ? latest : o)));
+          }
+        })
+        .catch(() => {});
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [activeTrackingOrder?.id, activeTrackingOrder?.status]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(cart));
@@ -510,6 +571,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(updated);
     addNotification('Profile updated', 'Your account details are saved.', 'success');
   };
+
+  const refreshOrders = useCallback(async () => {
+    const latestOrders = await fetchOrders();
+    setOrders(latestOrders);
+  }, []);
 
   // Address operations
   const addAddress = (newAddr: Omit<Address, 'id'>) => {
@@ -805,238 +871,112 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAppliedCoupon(null);
   };
 
-  // Order Placement
+  // Order Placement (Server Authoritative)
   const createOrder = async (
     address: Address,
     paymentMethod: 'razorpay' | 'cod' | 'upi' | 'card' | 'wallet',
-    options?: { deliveryInstructions?: string; tipAmount?: number; scheduledFor?: string }
+    options?: {
+      deliveryInstructions?: string;
+      tipAmount?: number;
+      scheduledFor?: string;
+      paymentStatus?: string;
+      paymentId?: string;
+      paymentVerified?: boolean;
+    }
   ): Promise<Order> => {
+    if (currentUser.isGuest) {
+      openAuthModal('login');
+      throw new Error('Please sign in to place an order.');
+    }
+
     const firstItem = menuItems.find((m) => m.id === cart[0]?.menuItemId);
     const rest = restaurants.find((r) => r.id === firstItem?.restaurantId) || restaurants[0];
 
-    const currentPointsRedeemed = cartTotals.pointsRedeemed;
-    const currentPointsEarned = cartTotals.pointsToEarn;
-    const currentLoyaltyDiscount = cartTotals.loyaltyDiscount;
-
-    const newOrder: Order = {
-      id: `ord_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      orderNumber: `FV-${Math.floor(10000 + Math.random() * 90000)}`,
-      customerId: currentUser.id,
-      customerName: currentUser.name,
-      customerPhone: currentUser.phone || '+91 98765 43210',
+    const serverOrder = await submitOrder({
       restaurantId: rest.id,
-      restaurantName: rest.name,
-      restaurantLocation: rest.location.coordinates,
-      items: [...cart],
-      subtotal: cartTotals.subtotal,
-      deliveryFee: cartTotals.deliveryFee,
-      tax: cartTotals.tax,
-      platformFee: cartTotals.platformFee,
-      tipAmount: options?.tipAmount ?? cartTotals.tipAmount,
-      discountAmount: cartTotals.discount,
-      loyaltyDiscount: currentLoyaltyDiscount,
-      loyaltyPointsRedeemed: currentPointsRedeemed,
-      loyaltyPointsEarned: currentPointsEarned,
-      totalAmount: cartTotals.total,
-      couponCode: appliedCoupon?.code,
-      status: 'placed',
-      paymentMethod,
-      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid',
-      deliveryPartnerId: 'user_deliv_1',
-      deliveryPartnerName: 'Rohan Verma',
-      deliveryPartnerPhone: '+91 98888 11223',
+      items: cart,
       deliveryAddress: address,
+      paymentMethod,
+      paymentStatus: options?.paymentStatus || (paymentMethod === 'cod' ? 'pending' : 'paid'),
+      paymentId: options?.paymentId || (paymentMethod !== 'cod' ? `pay_${Date.now()}` : undefined),
+      paymentVerified: options?.paymentVerified !== undefined ? options.paymentVerified : (paymentMethod !== 'cod'),
+      couponCode: appliedCoupon?.code,
+      pointsRedeemed: cartTotals.pointsRedeemed,
+      tipAmount: options?.tipAmount ?? cartTotals.tipAmount,
       deliveryInstructions: options?.deliveryInstructions,
       scheduledFor: options?.scheduledFor,
-      currentLocation: rest.location.coordinates,
-      createdAt: new Date().toISOString(),
-      estimatedDeliveryTime: options?.scheduledFor || '25-30 mins',
-      statusTimeline: [
-        {
-          status: 'placed',
-          time: 'Just now',
-          description: options?.scheduledFor
-            ? `Order confirmed & scheduled for ${options.scheduledFor}.`
-            : 'Your gourmet ticket has been placed and received by the kitchen.',
-        },
-      ],
-    };
+    });
 
-    await persistOrder(newOrder);
+    // Sync loyalty points from server
+    if (serverOrder.loyaltyPointsRedeemed && serverOrder.loyaltyPointsRedeemed > 0) {
+      setCurrentUser((prev) => ({
+        ...prev,
+        loyaltyPoints: Math.max(0, (prev.loyaltyPoints || 0) - serverOrder.loyaltyPointsRedeemed!),
+      }));
+    }
 
-    const updatedLoyaltyPoints = Math.max(
-      0,
-      (currentUser.loyaltyPoints || 0) - currentPointsRedeemed + currentPointsEarned
-    );
-
-    setCurrentUser((prev) => ({
-      ...prev,
-      loyaltyPoints: updatedLoyaltyPoints,
-    }));
-
-    setOrders((prev) => [newOrder, ...prev]);
-    setActiveTrackingOrder(newOrder);
+    setOrders((prev) => [serverOrder, ...prev.filter((o) => o.id !== serverOrder.id)]);
+    setActiveTrackingOrder(serverOrder);
     clearCart();
 
     addNotification(
       'Order Placed! 🛵',
-      `Order #${newOrder.orderNumber} sent to ${newOrder.restaurantName}. Tracking started.`,
+      `Order #${serverOrder.orderNumber} sent to ${serverOrder.restaurantName}. Tracking started.`,
       'success'
     );
 
-    if (currentPointsRedeemed > 0) {
+    if (serverOrder.loyaltyPointsRedeemed && serverOrder.loyaltyPointsRedeemed > 0) {
       addNotification(
         'Points Redeemed! ✨',
-        `Redeemed ${currentPointsRedeemed} FoodVerse Points for a discount of ₹${currentLoyaltyDiscount}.00`,
+        `Redeemed ${serverOrder.loyaltyPointsRedeemed} FoodVerse Points for a discount of ₹${serverOrder.loyaltyDiscount || 0}.00`,
         'info'
       );
     }
 
-    addNotification(
-      '⭐ Points Earned!',
-      `+${currentPointsEarned} FoodVerse Points credited! Your balance is now ${updatedLoyaltyPoints} pts.`,
-      'success'
-    );
-
-    simulateOrderProgress(newOrder.id);
-
-    return newOrder;
-  };
-
-  const simulateOrderProgress = (orderId: string) => {
-    const stages: { status: OrderStatus; delay: number; desc: string; locOffset: [number, number] }[] = [
-      {
-        status: 'accepted',
-        delay: 5000,
-        desc: 'Restaurant accepted your order and began preparing ingredients.',
-        locOffset: [0.001, 0.001],
-      },
-      {
-        status: 'preparing',
-        delay: 11000,
-        desc: 'Master chefs are searing, baking, and garnishing your meal.',
-        locOffset: [0.002, 0.002],
-      },
-      {
-        status: 'out_for_delivery',
-        delay: 19000,
-        desc: 'Rohan picked up your thermal pack and is riding to your door.',
-        locOffset: [0.004, 0.004],
-      },
-      {
-        status: 'delivered',
-        delay: 32000,
-        desc: 'Order safely delivered. Enjoy your meal and leave a review!',
-        locOffset: [0.006, 0.006],
-      },
-    ];
-
-    stages.forEach((stage) => {
-      setTimeout(() => {
-        updateOrderStatus(orderId, stage.status);
-        addNotification(`Order Update: ${stage.status.replace(/_/g, ' ').toUpperCase()}`, stage.desc, 'info');
-      }, stage.delay);
-    });
+    return serverOrder;
   };
 
   // Order Cancellation & Issue Resolution
-  const cancelOrder = (orderId: string, reason: string) => {
-    const targetOrder = orders.find((o) => o.id === orderId);
-    if (!targetOrder) {
-      return { success: false, message: 'Order not found', refundAmount: 0 };
-    }
-
-    // Cancellation policy: Allowed if status is 'placed' or 'accepted'
-    if (targetOrder.status !== 'placed' && targetOrder.status !== 'accepted') {
+  const cancelOrder = async (orderId: string, reason: string) => {
+    try {
+      const result = await cancelOrderApi(orderId, reason);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? result.order : o)));
+      if (activeTrackingOrder?.id === orderId) {
+        setActiveTrackingOrder(result.order);
+      }
+      if (result.order.loyaltyPointsRedeemed) {
+        loadAccountProfile().then(setCurrentUser).catch(() => {});
+      }
+      addNotification('Order Cancelled', `Order #${result.order.orderNumber} has been cancelled.`, 'info');
       return {
-        success: false,
-        message: 'Order cannot be cancelled as kitchen preparation has already begun.',
-        refundAmount: 0,
+        success: true,
+        message: `Order #${result.order.orderNumber} cancelled. Refund of ₹${result.refundAmount || 0} processed.`,
+        refundAmount: result.refundAmount || 0,
       };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not cancel order.';
+      addNotification('Cancellation Failed', msg, 'warning');
+      return { success: false, message: msg, refundAmount: 0 };
     }
-
-    const refundAmount = targetOrder.totalAmount;
-
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId
-          ? {
-              ...o,
-              status: 'cancelled',
-              cancellationReason: reason,
-              refundAmount,
-              refundStatus: 'completed',
-              updatedAt: new Date().toISOString(),
-              statusTimeline: [
-                ...o.statusTimeline,
-                {
-                  status: 'cancelled',
-                  time: 'Just now',
-                  description: `Order cancelled by customer (${reason}). Full refund of ₹${refundAmount} initiated.`,
-                },
-              ],
-            }
-          : o
-      )
-    );
-
-    // If user redeemed points, refund them
-    if (targetOrder.loyaltyPointsRedeemed && targetOrder.loyaltyPointsRedeemed > 0) {
-      setCurrentUser((prev) => ({
-        ...prev,
-        loyaltyPoints: (prev.loyaltyPoints || 0) + (targetOrder.loyaltyPointsRedeemed || 0),
-      }));
-    }
-
-    addNotification(
-      'Order Cancelled',
-      `Order #${targetOrder.orderNumber} has been cancelled. 100% refund of ₹${refundAmount} processed.`,
-      'info'
-    );
-
-    return {
-      success: true,
-      message: `Order #${targetOrder.orderNumber} cancelled. 100% refund of ₹${refundAmount} credited.`,
-      refundAmount,
-    };
   };
 
-  const reportOrderIssue = (orderId: string, issueType: string, description: string) => {
-    const targetOrder = orders.find((o) => o.id === orderId);
-    if (!targetOrder) {
+  const reportOrderIssue = async (orderId: string, issueType: string, description: string) => {
+    try {
+      const result = await reportOrderIssueApi(orderId, issueType, description);
+      const updatedOrders = await fetchOrders();
+      setOrders(updatedOrders);
+      loadAccountProfile().then(setCurrentUser).catch(() => {});
+      addNotification('Issue Reported', 'Ticket registered. Resolution points credited to your wallet!', 'success');
+      return {
+        success: true,
+        ticketId: (result.ticket as any)?.id || 'TCK-CONFIRMED',
+        compensation: result.compensation || 100,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not report issue.';
+      addNotification('Report Failed', msg, 'warning');
       return { success: false, ticketId: '', compensation: 0 };
     }
-
-    const ticketId = `TCK-${Math.floor(100000 + Math.random() * 900000)}`;
-    const compensation = 100; // Flat ₹100 FoodVerse compensation credit
-
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId
-          ? {
-              ...o,
-              supportTicket: {
-                id: ticketId,
-                issueType,
-                description,
-                status: 'resolved',
-                compensationGranted: compensation,
-                createdAt: new Date().toISOString(),
-              },
-            }
-          : o
-      )
-    );
-
-    earnLoyaltyPoints(compensation, `resolution for Ticket #${ticketId}`);
-
-    addNotification(
-      'Issue Resolved Instantly!',
-      `Ticket #${ticketId} created. We credited ₹${compensation} in FoodVerse points to make things right!`,
-      'success'
-    );
-
-    return { success: true, ticketId, compensation };
   };
 
   const reorderOrder = (order: Order, replaceCart = true) => {
@@ -1075,155 +1015,144 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const completeOrder = (orderId: string) => {
+  const completeOrder = async (orderId: string) => {
     const targetOrder = orders.find((o) => o.id === orderId);
     if (!targetOrder) return;
     if (targetOrder.status === 'delivered') {
       addNotification('Order Already Completed', `Order #${targetOrder.orderNumber} is already delivered.`, 'info');
       return;
     }
-
-    const earned = targetOrder.loyaltyPointsEarned || Math.max(25, Math.round(targetOrder.totalAmount * 0.1));
-
-    updateOrderStatus(orderId, 'delivered');
-    earnLoyaltyPoints(earned, `completing Order #${targetOrder.orderNumber}`);
-
-    addNotification(
-      'Order Delivered & Points Unlocked! 🎉',
-      `Order #${targetOrder.orderNumber} delivered safely. +${earned} loyalty points credited to your tier!`,
-      'success'
-    );
+    await updateOrderStatus(orderId, 'delivered');
   };
 
-  const updateOrderStatus = (orderId: string, newStatus: OrderStatus, partnerLocation?: [number, number]) => {
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (o.id === orderId) {
-          const updated: Order = {
-            ...o,
-            status: newStatus,
-            currentLocation: partnerLocation || o.currentLocation,
-            updatedAt: new Date().toISOString(),
-            statusTimeline: [
-              ...o.statusTimeline,
-              {
-                status: newStatus,
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                description: `Status advanced to ${newStatus.replace(/_/g, ' ')}`,
-              },
-            ],
-          };
-          if (activeTrackingOrder?.id === orderId) {
-            setActiveTrackingOrder(updated);
-          }
-          return updated;
-        }
-        return o;
-      })
-    );
+  const updateOrderStatus = async (orderId: string, newStatus: OrderStatus, partnerLocation?: [number, number]) => {
+    try {
+      const updated = await updateOrderStatusApi(orderId, newStatus, partnerLocation);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)));
+      if (activeTrackingOrder?.id === orderId) {
+        setActiveTrackingOrder(updated);
+      }
+      if (newStatus === 'delivered') {
+        loadAccountProfile().then(setCurrentUser).catch(() => {});
+      }
+      addNotification(`Order #${updated.orderNumber}`, `Status updated to ${newStatus.replace(/_/g, ' ')}`, 'info');
+    } catch (err) {
+      addNotification('Status Update Failed', err instanceof Error ? err.message : 'Could not advance status.', 'warning');
+    }
   };
 
   // Reviews
-  const addReview = (newRev: Omit<Review, 'id' | 'date'>) => {
-    const rev: Review = {
-      ...newRev,
-      id: 'rev_' + Date.now(),
-      date: 'Just now',
-      helpfulVotes: 0,
-    };
-    setReviews((prev) => [rev, ...prev]);
-
-    // Update restaurant rating
-    setRestaurants((prev) =>
-      prev.map((r) => {
-        if (r.id === rev.restaurantId) {
-          const currentCount = r.reviewCount || 1;
-          const newAvg = Number(((r.rating * currentCount + rev.rating) / (currentCount + 1)).toFixed(1));
-          return {
-            ...r,
-            rating: newAvg,
-            reviewCount: currentCount + 1,
-          };
-        }
-        return r;
-      })
-    );
-
-    addNotification('Review Submitted! ⭐', `Thank you for sharing your feedback on ${rev.dishName || 'your meal'}!`, 'success');
+  const addReview = async (newRev: Omit<Review, 'id' | 'date'>) => {
+    try {
+      const result = await postReview(newRev);
+      setReviews((prev) => [result.review, ...prev]);
+      setRestaurants((prev) =>
+        prev.map((r) =>
+          r.id === newRev.restaurantId
+            ? { ...r, rating: result.updatedRestaurantRating, reviewCount: (r.reviewCount || 0) + 1 }
+            : r
+        )
+      );
+      addNotification('Review Submitted! ⭐', `Thank you for sharing your feedback on ${newRev.dishName || 'your meal'}!`, 'success');
+    } catch (err) {
+      addNotification('Review Failed', err instanceof Error ? err.message : 'Could not submit review.', 'warning');
+    }
   };
 
-  const voteHelpful = (reviewId: string) => {
-    setReviews((prev) =>
-      prev.map((r) => (r.id === reviewId ? { ...r, helpfulVotes: (r.helpfulVotes || 0) + 1 } : r))
-    );
-    addNotification('Feedback Recorded', 'Marked review as helpful', 'info');
+  const voteHelpful = async (reviewId: string) => {
+    try {
+      const updated = await voteReview(reviewId);
+      setReviews((prev) => prev.map((r) => (r.id === reviewId ? updated : r)));
+      addNotification('Feedback Recorded', 'Marked review as helpful', 'info');
+    } catch (err) {
+      addNotification('Feedback Note', err instanceof Error ? err.message : 'Could not register vote.', 'info');
+    }
   };
 
-  const addOwnerReply = (reviewId: string, replyText: string) => {
-    setReviews((prev) =>
-      prev.map((r) =>
-        r.id === reviewId
-          ? {
-              ...r,
-              ownerReply: {
-                author: 'Kitchen Manager',
-                text: replyText,
-                date: 'Just now',
-              },
-            }
-          : r
-      )
-    );
-    addNotification('Reply Published', 'Restaurant response added to customer review', 'success');
+  const addOwnerReply = async (reviewId: string, replyText: string) => {
+    try {
+      const updated = await postOwnerReply(reviewId, replyText);
+      setReviews((prev) => prev.map((r) => (r.id === reviewId ? updated : r)));
+      addNotification('Reply Published', 'Restaurant response added to customer review', 'success');
+    } catch (err) {
+      addNotification('Reply Failed', err instanceof Error ? err.message : 'Could not post reply.', 'warning');
+    }
   };
 
   // Restaurant & Menu Management
-  const updateRestaurant = (updated: Partial<Restaurant> & { id: string }) => {
-    setRestaurants((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
-    addNotification('Restaurant Updated', 'Profile and settings saved', 'success');
+  const updateRestaurant = async (updated: Partial<Restaurant> & { id: string }) => {
+    try {
+      const saved = await updateRestaurantProfile(updated.id, updated);
+      setRestaurants((prev) => prev.map((r) => (r.id === updated.id ? saved : r)));
+      addNotification('Restaurant Updated', 'Profile and settings saved.', 'success');
+    } catch (err) {
+      addNotification('Update Failed', err instanceof Error ? err.message : 'Could not update restaurant.', 'warning');
+    }
   };
 
-  const approveRestaurant = (restaurantId: string, isApproved: boolean) => {
-    setRestaurants((prev) =>
-      prev.map((r) => (r.id === restaurantId ? { ...r, isApproved } : r))
-    );
-    addNotification(
-      isApproved ? 'Restaurant Approved' : 'Restaurant Rejected',
-      `Restaurant status updated by Administrator`,
-      isApproved ? 'success' : 'warning'
-    );
+  const approveRestaurant = async (restaurantId: string, isApproved: boolean) => {
+    try {
+      const saved = await setRestaurantApproval(restaurantId, isApproved);
+      setRestaurants((prev) => prev.map((r) => (r.id === restaurantId ? saved : r)));
+      addNotification(
+        isApproved ? 'Restaurant Approved' : 'Restaurant Rejected',
+        `Restaurant status updated by Administrator`,
+        isApproved ? 'success' : 'warning'
+      );
+    } catch (err) {
+      addNotification('Action Failed', err instanceof Error ? err.message : 'Could not update approval.', 'warning');
+    }
   };
 
-  const addMenuItem = (item: Omit<MenuItem, 'id'>) => {
-    const newItem: MenuItem = {
-      ...item,
-      id: `menu_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      rating: 5.0,
-      ratingCount: 1,
-    };
-    setMenuItems((prev) => [newItem, ...prev]);
-    addNotification('Dish Added', `${newItem.name} added to menu catalog`, 'success');
+  const addMenuItem = async (item: Omit<MenuItem, 'id'>) => {
+    try {
+      const saved = await saveMenuItem(item.restaurantId, item);
+      setMenuItems((prev) => [saved, ...prev]);
+      addNotification('Dish Added', `${saved.name} added to menu catalog`, 'success');
+    } catch (err) {
+      addNotification('Add Failed', err instanceof Error ? err.message : 'Could not add dish.', 'warning');
+    }
   };
 
-  const updateMenuItem = (item: Partial<MenuItem> & { id: string }) => {
-    setMenuItems((prev) => prev.map((m) => (m.id === item.id ? { ...m, ...item } : m)));
-    addNotification('Dish Updated', 'Menu item changes successfully saved', 'success');
+  const updateMenuItem = async (item: Partial<MenuItem> & { id: string }) => {
+    try {
+      const saved = await modifyMenuItem(item.id, item);
+      setMenuItems((prev) => prev.map((m) => (m.id === item.id ? saved : m)));
+      addNotification('Dish Updated', 'Menu item changes successfully saved', 'success');
+    } catch (err) {
+      addNotification('Update Failed', err instanceof Error ? err.message : 'Could not update dish.', 'warning');
+    }
   };
 
-  const deleteMenuItem = (itemId: string) => {
-    setMenuItems((prev) => prev.filter((m) => m.id !== itemId));
-    addNotification('Dish Removed', 'Menu item deleted', 'info');
+  const deleteMenuItem = async (itemId: string) => {
+    try {
+      await removeMenuItem(itemId);
+      setMenuItems((prev) => prev.filter((m) => m.id !== itemId));
+      addNotification('Dish Removed', 'Menu item deleted', 'info');
+    } catch (err) {
+      addNotification('Delete Failed', err instanceof Error ? err.message : 'Could not delete dish.', 'warning');
+    }
   };
 
   // Coupon management
-  const addCoupon = (coupon: Coupon) => {
-    setCoupons((prev) => [coupon, ...prev]);
-    addNotification('Coupon Created', `Discount code ${coupon.code} active`, 'success');
+  const addCoupon = async (coupon: Coupon) => {
+    try {
+      const saved = await saveCoupon(coupon);
+      setCoupons((prev) => [saved, ...prev.filter((c) => c.code !== saved.code)]);
+      addNotification('Coupon Created', `Discount code ${saved.code} active`, 'success');
+    } catch (err) {
+      addNotification('Create Failed', err instanceof Error ? err.message : 'Could not create coupon.', 'warning');
+    }
   };
 
-  const deleteCoupon = (code: string) => {
-    setCoupons((prev) => prev.filter((c) => c.code !== code));
-    addNotification('Coupon Removed', `Code ${code} deleted`, 'info');
+  const deleteCoupon = async (code: string) => {
+    try {
+      await removeCouponApi(code);
+      setCoupons((prev) => prev.filter((c) => c.code !== code));
+      addNotification('Coupon Removed', `Code ${code} deleted`, 'info');
+    } catch (err) {
+      addNotification('Delete Failed', err instanceof Error ? err.message : 'Could not delete coupon.', 'warning');
+    }
   };
 
   // Modals
@@ -1254,6 +1183,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         menuItems,
         cart,
         orders,
+        refreshOrders,
         activeTrackingOrder,
         coupons,
         appliedCoupon,

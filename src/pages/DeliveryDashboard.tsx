@@ -1,31 +1,98 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { LeafletMap } from '../components/common/LeafletMap';
-import { OrderStatus } from '../types';
+import { fetchAvailableDeliveries, claimDeliveryApi, updateCourierLocationApi, saveAccountProfile } from '../services/accountApi';
+import { Order } from '../types';
 import {
   Bike,
   Navigation,
   CheckCircle2,
   DollarSign,
   Clock,
-  MapPin,
-  Phone,
   Power,
   Package,
+  Radio,
+  MapPin,
 } from 'lucide-react';
 
 export const DeliveryDashboard: React.FC = () => {
-  const { orders, updateOrderStatus } = useAppStore();
-  const [isOnline, setIsOnline] = useState(true);
+  const { currentUser, orders, updateOrderStatus, addNotification, refreshOrders } = useAppStore();
+  const [isOnline, setIsOnline] = useState(currentUser.isOnline ?? false);
+  const [availableOrders, setAvailableOrders] = useState<Order[]>([]);
+  const [isClaiming, setIsClaiming] = useState<string | null>(null);
 
-  // Filter orders that are ready for pickup or actively being delivered
-  const activeOrders = orders.filter(
-    (o) => o.status === 'preparing' || o.status === 'out_for_delivery'
+  useEffect(() => {
+    setIsOnline(currentUser.isOnline ?? false);
+  }, [currentUser.id, currentUser.isOnline]);
+
+  const toggleOnlineStatus = async () => {
+    const nextStatus = !isOnline;
+    setIsOnline(nextStatus);
+    try {
+      await saveAccountProfile({ isOnline: nextStatus });
+    } catch (err) {
+      setIsOnline(!nextStatus);
+      addNotification('Status update failed', err instanceof Error ? err.message : 'Could not update duty status.', 'warning');
+    }
+  };
+
+  // Refresh assigned deliveries so newly placed orders arrive without re-login.
+  useEffect(() => {
+    const loadDeliveries = () => {
+      void refreshOrders().catch(() => {});
+      if (isOnline) {
+        fetchAvailableDeliveries()
+          .then(setAvailableOrders)
+          .catch(() => {});
+      } else {
+        setAvailableOrders([]);
+      }
+    };
+    loadDeliveries();
+    const interval = setInterval(loadDeliveries, 10000);
+    return () => clearInterval(interval);
+  }, [isOnline, refreshOrders]);
+
+  // Orders assigned to this logged-in courier partner
+  const myActiveOrders = orders.filter(
+    (o) =>
+      o.deliveryPartnerId === currentUser.id &&
+      (o.status === 'placed' || o.status === 'accepted' || o.status === 'preparing' || o.status === 'out_for_delivery')
   );
-  const completedOrders = orders.filter((o) => o.status === 'delivered');
+  const completedOrders = orders.filter(
+    (o) => o.deliveryPartnerId === currentUser.id && o.status === 'delivered'
+  );
 
-  // Simulated courier earnings: ₹80 per delivery
-  const todayEarnings = completedOrders.length * 80 + 150; // with incentive
+  // Courier earnings: ₹80 per delivery + daily incentive
+  const todayEarnings = completedOrders.length * 80 + (completedOrders.length > 0 ? 150 : 0);
+
+  const handleClaimOrder = async (orderId: string) => {
+    try {
+      setIsClaiming(orderId);
+      await claimDeliveryApi(orderId);
+      setAvailableOrders((prev) => prev.filter((o) => o.id !== orderId));
+      addNotification('Order Claimed!', `You have been assigned to order #${orderId.slice(-6)}.`, 'success');
+      await refreshOrders();
+    } catch (err) {
+      addNotification('Claim Failed', err instanceof Error ? err.message : 'Could not claim order.', 'warning');
+    } finally {
+      setIsClaiming(null);
+    }
+  };
+
+  const handleUpdateLocation = async (order: Order) => {
+    try {
+      // Simulate slight move along transit route for live GPS simulation
+      const baseLoc = order.currentLocation || order.restaurantLocation;
+      const offset = 0.0015;
+      const newLoc: [number, number] = [baseLoc[0] + offset, baseLoc[1] - offset];
+      await updateCourierLocationApi(order.id, newLoc);
+      await updateOrderStatus(order.id, order.status, newLoc);
+      addNotification('GPS Updated', 'Live coordinates transmitted to customer tracking.', 'info');
+    } catch (err) {
+      addNotification('Location Error', err instanceof Error ? err.message : 'Could not broadcast location.', 'warning');
+    }
+  };
 
   return (
     <div className="space-y-8 pb-16">
@@ -38,7 +105,7 @@ export const DeliveryDashboard: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-black text-stone-900 dark:text-stone-100">
-                Courier Rohan Verma
+                {currentUser.name || 'Fleet Courier Partner'}
               </h1>
               <span
                 className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${
@@ -52,15 +119,15 @@ export const DeliveryDashboard: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-stone-500 dark:text-stone-400">
-              FoodVerse Hero Partner ID: #DP-8821 • 4.9★ (380+ deliveries)
+              FoodVerse Hero Partner ID: <span className="font-mono">#{currentUser.id.slice(-6).toUpperCase()}</span> • 4.9★
             </p>
           </div>
         </div>
 
         {/* Online/Offline Toggle Button */}
         <button
-          onClick={() => setIsOnline(!isOnline)}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs transition-all shadow-md ${
+          onClick={toggleOnlineStatus}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs transition-all shadow-md cursor-pointer ${
             isOnline
               ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/20'
               : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
@@ -110,24 +177,69 @@ export const DeliveryDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Active Orders List with Live Map */}
+      {/* SECTION 1: AVAILABLE PICKUP ORDERS (CLAIMABLE) */}
+      {isOnline && availableOrders.length > 0 && (
+        <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-3xl p-6 border border-orange-500/30 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-black text-stone-900 dark:text-stone-100 flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-orange-500 animate-ping" />
+              <span>Available Orders for Pickup ({availableOrders.length})</span>
+            </h2>
+            <span className="text-xs text-orange-700 dark:text-orange-400 font-bold">Unassigned Kitchen Tickets</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {availableOrders.map((ord) => (
+              <div key={ord.id} className="p-4 bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-sm flex flex-col justify-between gap-3">
+                <div>
+                  <div className="flex items-center justify-between text-xs font-mono font-bold text-orange-500">
+                    <span>#{ord.orderNumber}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300">
+                      ₹{ord.totalAmount}
+                    </span>
+                  </div>
+                  <div className="font-bold text-sm text-stone-900 dark:text-stone-100 mt-1">
+                    {ord.restaurantName}
+                  </div>
+                  <div className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-stone-400" />
+                    <span>Drop: {ord.deliveryAddress.street}, {ord.deliveryAddress.city}</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isClaiming === ord.id}
+                  onClick={() => handleClaimOrder(ord.id)}
+                  className="w-full py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Bike className="w-3.5 h-3.5" />
+                  <span>{isClaiming === ord.id ? 'Claiming Run...' : 'Claim Delivery Run'}</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 2: MY ASSIGNED TRANSIT RUNS */}
       <div className="space-y-6">
         <h2 className="text-xl font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
           <Navigation className="w-5 h-5 text-orange-500" />
-          <span>Assigned Transit Routes ({activeOrders.length})</span>
+          <span>My Assigned Deliveries ({myActiveOrders.length})</span>
         </h2>
 
         {!isOnline ? (
           <div className="p-12 text-center bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800">
             <p className="text-stone-400 text-sm">You are offline. Turn on your shift to receive delivery tickets.</p>
           </div>
-        ) : activeOrders.length === 0 ? (
+        ) : myActiveOrders.length === 0 ? (
           <div className="p-12 text-center bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800">
-            <p className="text-stone-400 text-sm">No pending deliveries right now. You are prioritized for incoming restaurant tickets.</p>
+            <p className="text-stone-400 text-sm">No orders are currently assigned to you. New orders will appear here while you are online.</p>
           </div>
         ) : (
           <div className="space-y-6">
-            {activeOrders.map((order) => (
+            {myActiveOrders.map((order) => (
               <div
                 key={order.id}
                 className="bg-white dark:bg-stone-900 rounded-3xl p-6 border border-stone-200/80 dark:border-stone-800 shadow-sm space-y-6"
@@ -158,7 +270,7 @@ export const DeliveryDashboard: React.FC = () => {
                   deliveryLocation={[order.deliveryAddress.lat, order.deliveryAddress.lng]}
                   deliveryAddress={order.deliveryAddress.street}
                   courierLocation={order.currentLocation}
-                  courierName="Your Location"
+                  courierName={currentUser.name || 'Your Location'}
                   className="h-64 w-full rounded-2xl"
                 />
 
@@ -189,10 +301,19 @@ export const DeliveryDashboard: React.FC = () => {
 
                 {/* Action Buttons */}
                 <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateLocation(order)}
+                    className="py-3 px-4 rounded-2xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Radio className="w-4 h-4 text-orange-500 animate-pulse" />
+                    <span>Ping Live GPS</span>
+                  </button>
+
                   {order.status === 'preparing' && (
                     <button
                       onClick={() => updateOrderStatus(order.id, 'out_for_delivery')}
-                      className="flex-1 py-3 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2"
+                      className="flex-1 py-3 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all"
                     >
                       <Bike className="w-4 h-4" />
                       <span>Confirm Picked Up & Start Ride</span>
@@ -202,7 +323,7 @@ export const DeliveryDashboard: React.FC = () => {
                   {order.status === 'out_for_delivery' && (
                     <button
                       onClick={() => updateOrderStatus(order.id, 'delivered')}
-                      className="flex-1 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2"
+                      className="flex-1 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all"
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       <span>Confirm Doorstep Delivery (Complete Run)</span>

@@ -52,12 +52,12 @@ export const RestaurantDiscoveryMap: React.FC<RestaurantDiscoveryMapProps> = ({
       currentUser.addresses[0] || {
         id: 'default_loc',
         label: 'Home',
-        street: 'Apt 402, Lotus Heights, Indiranagar',
-        city: 'Bengaluru',
-        state: 'Karnataka',
-        zip: '560038',
-        lat: 12.9784,
-        lng: 77.6408,
+        street: 'Shivaji Chowk, Main Road',
+        city: 'Islampur',
+        state: 'Maharashtra',
+        zip: '415409',
+        lat: 17.0585,
+        lng: 74.3108,
       }
     );
   }, [currentUser.addresses]);
@@ -299,9 +299,9 @@ export const RestaurantDiscoveryMap: React.FC<RestaurantDiscoveryMapProps> = ({
           id: 'gps_loc',
           label: 'Other',
           street: 'Current GPS Location',
-          city: selectedAddress.city || 'Bengaluru',
-          state: 'Karnataka',
-          zip: '560001',
+          city: selectedAddress.city || 'Islampur',
+          state: 'Maharashtra',
+          zip: '415409',
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         };

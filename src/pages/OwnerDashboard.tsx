@@ -20,6 +20,7 @@ import {
 
 export const OwnerDashboard: React.FC = () => {
   const {
+    currentUser,
     restaurants,
     menuItems,
     orders,
@@ -31,7 +32,20 @@ export const OwnerDashboard: React.FC = () => {
     addNotification,
   } = useAppStore();
 
-  const myRestaurant = restaurants[0]; // Smash & Sizzle Gourmet Burgers
+  const ownedRestaurants = restaurants.filter((r) => r.ownerId === currentUser.id);
+  const [selectedRestId, setSelectedRestId] = useState<string>(() => {
+    return ownedRestaurants[0]?.id || restaurants[0]?.id || '';
+  });
+
+  const myRestaurant = restaurants.find((r) => r.id === selectedRestId) || ownedRestaurants[0] || restaurants[0] || {
+    id: 'rest_1',
+    name: 'Gourmet Kitchen',
+    description: '',
+    priceForTwo: 400,
+    isApproved: true,
+    ownerId: currentUser.id,
+  } as Restaurant;
+
   const myItems = menuItems.filter((m) => m.restaurantId === myRestaurant.id);
   const myOrders = orders.filter((o) => o.restaurantId === myRestaurant.id);
 
@@ -53,6 +67,15 @@ export const OwnerDashboard: React.FC = () => {
   const [restName, setRestName] = useState(myRestaurant.name);
   const [restDesc, setRestDesc] = useState(myRestaurant.description);
   const [restPriceForTwo, setRestPriceForTwo] = useState(myRestaurant.priceForTwo);
+
+  // Sync profile form state when selected restaurant changes
+  React.useEffect(() => {
+    if (myRestaurant) {
+      setRestName(myRestaurant.name);
+      setRestDesc(myRestaurant.description);
+      setRestPriceForTwo(myRestaurant.priceForTwo);
+    }
+  }, [myRestaurant.id, myRestaurant.name, myRestaurant.description, myRestaurant.priceForTwo]);
 
   // Create dish handler
   const handleSaveDish = (e: React.FormEvent) => {
@@ -110,13 +133,34 @@ export const OwnerDashboard: React.FC = () => {
               <h1 className="text-2xl font-black text-stone-900 dark:text-stone-100">
                 {myRestaurant.name}
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-bold">
-                Live Kitchen
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                  myRestaurant.isApproved
+                    ? 'bg-emerald-500/10 text-emerald-600'
+                    : 'bg-amber-500/10 text-amber-600'
+                }`}
+              >
+                {myRestaurant.isApproved ? 'Approved Kitchen' : 'Pending Admin Approval'}
               </span>
             </div>
-            <p className="text-xs text-stone-500 dark:text-stone-400">
-              Restaurant Partner Portal • Owner ID: {myRestaurant.ownerId || 'user_owner_1'}
-            </p>
+            <div className="flex items-center gap-3 mt-1">
+              <p className="text-xs text-stone-500 dark:text-stone-400">
+                Owner ID: <span className="font-mono">{myRestaurant.ownerId || currentUser.id}</span>
+              </p>
+              {ownedRestaurants.length > 1 && (
+                <select
+                  value={selectedRestId}
+                  onChange={(e) => setSelectedRestId(e.target.value)}
+                  className="text-xs font-bold px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700"
+                >
+                  {ownedRestaurants.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
         </div>
 

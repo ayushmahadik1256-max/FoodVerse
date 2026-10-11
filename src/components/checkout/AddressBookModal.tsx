@@ -35,12 +35,12 @@ export const AddressBookModal: React.FC<AddressBookModalProps> = ({
   const [street, setStreet] = useState('');
   const [apartment, setApartment] = useState('');
   const [landmark, setLandmark] = useState('');
-  const [city, setCity] = useState('Bengaluru');
-  const [state, setState] = useState('Karnataka');
-  const [zip, setZip] = useState('560038');
+  const [city, setCity] = useState('Islampur');
+  const [state, setState] = useState('Maharashtra');
+  const [zip, setZip] = useState('415409');
   const [isDefault, setIsDefault] = useState(false);
-  const [lat, setLat] = useState(12.9716);
-  const [lng, setLng] = useState(77.5946);
+  const [lat, setLat] = useState(17.0585);
+  const [lng, setLng] = useState(74.3108);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -58,9 +58,9 @@ export const AddressBookModal: React.FC<AddressBookModalProps> = ({
     setStreet('');
     setApartment('');
     setLandmark('');
-    setCity('Bengaluru');
-    setState('Karnataka');
-    setZip('560038');
+    setCity('Islampur');
+    setState('Maharashtra');
+    setZip('415409');
     setIsDefault(false);
     setIsAdding(false);
     setEditingId(null);
@@ -122,11 +122,12 @@ export const AddressBookModal: React.FC<AddressBookModalProps> = ({
     return <MapPin className="w-4 h-4 text-emerald-500" />;
   };
 
-  // Quick preset Bangalore / Mumbai locations for rapid testing
+  // Quick preset Islampur locations
   const presets = [
-    { name: 'Indiranagar 100ft Rd', city: 'Bengaluru', lat: 12.9784, lng: 77.6408, zip: '560038' },
-    { name: 'Koramangala 4th Block', city: 'Bengaluru', lat: 12.9352, lng: 77.6245, zip: '560034' },
-    { name: 'Bandra West, Hill Rd', city: 'Mumbai', lat: 19.0596, lng: 72.8295, zip: '400050' },
+    { name: 'Near ST Bus Stand', city: 'Islampur', lat: 17.0585, lng: 74.3108, zip: '415409' },
+    { name: 'Shivaji Chowk', city: 'Islampur', lat: 17.0572, lng: 74.3095, zip: '415409' },
+    { name: 'Market Yard', city: 'Islampur', lat: 17.0563, lng: 74.3080, zip: '415409' },
+    { name: 'College Road, Walwa', city: 'Islampur', lat: 17.0618, lng: 74.3135, zip: '415409' },
   ];
 
   return (
@@ -369,7 +370,7 @@ export const AddressBookModal: React.FC<AddressBookModalProps> = ({
                   type="text"
                   value={street}
                   onChange={(e) => setStreet(e.target.value)}
-                  placeholder="e.g. 100 Feet Road, HAL 2nd Stage, Indiranagar"
+                  placeholder="e.g. Near ST Bus Stand, Main Road, Islampur"
                   required
                   className="w-full px-3 py-2 rounded-xl bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-xs text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { Address } from '../../types';
 import { AddressBookModal } from './AddressBookModal';
+import { fetchPaymentConfig } from '../../services/accountApi';
 import {
   X,
   MapPin,
@@ -13,12 +14,16 @@ import {
   CheckCircle2,
   AlertCircle,
   ChevronRight,
+  ChevronLeft,
   Plus,
   Coins,
   HeartHandshake,
   QrCode,
   Smartphone,
   RotateCcw,
+  Wallet,
+  Lock,
+  Zap,
 } from 'lucide-react';
 
 interface CheckoutModalProps {
@@ -58,14 +63,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [scheduledSlot, setScheduledSlot] = useState<string>('Today, 7:30 PM - 8:00 PM');
 
   // Payment Method
-  const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'upi' | 'card' | 'cod' | 'wallet'>('razorpay');
+  const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'upi' | 'card' | 'cod' | 'wallet'>('cod');
   const [upiId, setUpiId] = useState('ayush@okhdfcbank');
   const [cardNumber, setCardNumber] = useState('4242 •••• •••• 4242');
   const [simulateFailure, setSimulateFailure] = useState(false);
 
   // Processing, Success & Error states
   const [isProcessing, setIsProcessing] = useState(false);
-  const [checkoutStep, setCheckoutStep] = useState<'checkout' | 'processing' | 'success' | 'failed'>('checkout');
+  const [checkoutStep, setCheckoutStep] = useState<'checkout' | 'payment' | 'processing' | 'success' | 'failed'>('checkout');
   const [lastPlacedOrder, setLastPlacedOrder] = useState<any | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -82,61 +87,107 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   const tipOptions = [0, 20, 30, 50];
 
-  const handlePlaceOrder = async () => {
-    // If user is guest, trigger Auth Modal first
+  const handleProceedToPayment = () => {
     if (currentUser.isGuest) {
-      openAuthModal('login', () => {
-        // will resume checkout after login
-      });
+      openAuthModal('login', () => {});
       return;
     }
-
     if (!selectedAddress) {
       setIsAddressModalOpen(true);
       return;
     }
+    setCheckoutStep('payment');
+  };
 
+  const handlePlaceOrder = async () => {
     setIsProcessing(true);
     setCheckoutStep('processing');
 
-    // Simulate network delay
-    setTimeout(async () => {
-      if (simulateFailure) {
-        setIsProcessing(false);
-        setCheckoutStep('failed');
-        setErrorMessage('Payment authorization failed: Bank server timed out. Please retry or select Cash on Delivery.');
-        return;
+    if (simulateFailure) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      setIsProcessing(false);
+      setCheckoutStep('failed');
+      setErrorMessage('Bank gateway simulation: Transaction declined by card issuer.');
+      return;
+    }
+
+    try {
+      // Simulate realistic short gateway authorization delay for online methods (UPI / Razorpay)
+      if (paymentMethod !== 'cod') {
+        await new Promise((resolve) => setTimeout(resolve, 800));
       }
 
-      try {
-        const fullInstructions = [
-          deliveryInstruction,
-          customDeliveryNote.trim(),
-        ].filter(Boolean).join(' • ');
+      const fullInstructions = [
+        deliveryInstruction,
+        customDeliveryNote.trim(),
+      ].filter(Boolean).join(' • ');
 
-        const scheduledTime = deliveryType === 'schedule' ? scheduledSlot : undefined;
+      const scheduledTime = deliveryType === 'schedule' ? scheduledSlot : undefined;
 
-        const order = await createOrder(selectedAddress, paymentMethod, {
-          deliveryInstructions: fullInstructions,
-          tipAmount: selectedTip,
-          scheduledFor: scheduledTime,
-        });
+      const generatedPaymentId = paymentMethod === 'razorpay'
+        ? `pay_rzp_${Date.now()}`
+        : paymentMethod === 'upi'
+        ? `upi_ref_${Date.now()}`
+        : undefined;
 
-        setIsProcessing(false);
-        setLastPlacedOrder(order);
-        setCheckoutStep('success');
-      } catch (err: any) {
-        setIsProcessing(false);
-        setCheckoutStep('failed');
-        setErrorMessage(err?.message || 'Unexpected payment error occurred');
-      }
-    }, 1800);
+      const order = await createOrder(selectedAddress!, paymentMethod, {
+        deliveryInstructions: fullInstructions,
+        tipAmount: selectedTip,
+        scheduledFor: scheduledTime,
+        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'paid',
+        paymentId: generatedPaymentId,
+        paymentVerified: paymentMethod !== 'cod',
+      });
+
+      setIsProcessing(false);
+      setLastPlacedOrder(order);
+      setCheckoutStep('success');
+      onOrderSuccess(order.id);
+      onClose();
+    } catch (err: any) {
+      setIsProcessing(false);
+      setCheckoutStep('failed');
+      setErrorMessage(err?.message || 'Could not process order. Please try again.');
+    }
   };
 
   const handleRetryPayment = () => {
     setSimulateFailure(false);
-    setCheckoutStep('checkout');
+    setCheckoutStep('payment');
     setErrorMessage(null);
+  };
+
+  /* ─── Derived labels ─── */
+  const stepTitle = {
+    checkout: 'Finalize Order & Delivery',
+    payment: 'Choose Payment Method',
+    processing: 'Securing Your Gourmet Ticket...',
+    success: 'Order Confirmed! 🎉',
+    failed: 'Payment Declined',
+  }[checkoutStep];
+
+  const paymentMethodMeta: Record<string, { label: string; sub: string; color: string; badge?: string }> = {
+    cod: {
+      label: 'Cash on Delivery',
+      sub: 'Pay at your door',
+      color: 'text-amber-600',
+    },
+    razorpay: {
+      label: 'Razorpay',
+      sub: 'Cards, UPI, NetBanking, Wallets',
+      color: 'text-blue-600',
+      badge: 'Recommended',
+    },
+    upi: {
+      label: 'UPI / GPay / PhonePe',
+      sub: 'Instant zero-fee transfer',
+      color: 'text-emerald-600',
+    },
+    card: {
+      label: 'Credit / Debit Card',
+      sub: 'Visa, Mastercard, RuPay',
+      color: 'text-violet-600',
+    },
   };
 
   return (
@@ -151,21 +202,30 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           onClick={(e) => e.stopPropagation()}
           className="relative w-full max-w-2xl bg-white dark:bg-stone-900 rounded-3xl shadow-2xl border border-stone-200 dark:border-stone-800 overflow-hidden flex flex-col max-h-[92vh]"
         >
-          {/* Header */}
-          <div className="p-4 sm:p-5 border-b border-stone-100 dark:border-stone-800 flex items-center justify-between bg-stone-50/50 dark:bg-stone-900/50">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm">🛵</span>
-                <span className="text-[10px] font-black tracking-widest uppercase text-orange-600 dark:text-orange-400">
-                  Instant Dispatch Checkout
-                </span>
+          {/* ── Header ── */}
+          <div className="p-4 sm:p-5 border-b border-stone-100 dark:border-stone-800 flex items-center justify-between bg-stone-50/50 dark:bg-stone-900/50 shrink-0">
+            <div className="flex items-center gap-2">
+              {checkoutStep === 'payment' && (
+                <button
+                  type="button"
+                  onClick={() => setCheckoutStep('checkout')}
+                  className="w-7 h-7 rounded-full bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 flex items-center justify-center text-stone-500 transition-all mr-1"
+                  aria-label="Back to checkout"
+                >
+                  <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                </button>
+              )}
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">🛵</span>
+                  <span className="text-[10px] font-black tracking-widest uppercase text-orange-600 dark:text-orange-400">
+                    Instant Dispatch Checkout
+                  </span>
+                </div>
+                <h2 className="text-lg sm:text-xl font-black text-stone-900 dark:text-stone-100 mt-0.5">
+                  {stepTitle}
+                </h2>
               </div>
-              <h2 className="text-lg sm:text-xl font-black text-stone-900 dark:text-stone-100 mt-0.5">
-                {checkoutStep === 'success' && 'Order Confirmed! 🎉'}
-                {checkoutStep === 'failed' && 'Payment Declined'}
-                {checkoutStep === 'processing' && 'Securing Your Gourmet Ticket...'}
-                {checkoutStep === 'checkout' && 'Finalize Order & Delivery'}
-              </h2>
             </div>
             {checkoutStep !== 'processing' && (
               <button
@@ -183,7 +243,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             )}
           </div>
 
-          {/* VIEW: PROCESSING */}
+          {/* ══════════════════════════════════════════════════
+              VIEW: PROCESSING
+          ══════════════════════════════════════════════════ */}
           {checkoutStep === 'processing' && (
             <div className="p-12 text-center space-y-4 my-auto">
               <div className="relative w-16 h-16 mx-auto">
@@ -191,15 +253,23 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <div className="absolute inset-0 flex items-center justify-center text-xl">🍕</div>
               </div>
               <h3 className="text-base font-black text-stone-900 dark:text-stone-100">
-                Authorizing {paymentMethod.toUpperCase()} Payment
+                {paymentMethod === 'cod'
+                  ? 'Confirming Cash on Delivery Order'
+                  : paymentMethod === 'upi'
+                  ? 'Authorizing Instant UPI Payment'
+                  : 'Authorizing Razorpay Gateway'}
               </h3>
               <p className="text-xs text-stone-400 max-w-sm mx-auto">
-                Connecting to 256-bit bank gateway and transmitting your ticket to the kitchen...
+                {paymentMethod === 'cod'
+                  ? 'Reserving your delivery slot and routing your order ticket to the kitchen...'
+                  : 'Connecting to 256-bit bank gateway and transmitting your ticket to the kitchen...'}
               </p>
             </div>
           )}
 
-          {/* VIEW: SUCCESS SCREEN */}
+          {/* ══════════════════════════════════════════════════
+              VIEW: SUCCESS SCREEN
+          ══════════════════════════════════════════════════ */}
           {checkoutStep === 'success' && lastPlacedOrder && (
             <div className="p-6 sm:p-8 text-center space-y-5 overflow-y-auto">
               <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center text-3xl shadow-inner">
@@ -214,7 +284,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </p>
               </div>
 
-              {/* Order quick highlights */}
               <div className="max-w-md mx-auto p-4 rounded-2xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 text-left space-y-2 text-xs">
                 <div className="flex justify-between text-stone-500">
                   <span>Restaurant:</span>
@@ -256,7 +325,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             </div>
           )}
 
-          {/* VIEW: FAILED PAYMENT SCREEN */}
+          {/* ══════════════════════════════════════════════════
+              VIEW: FAILED PAYMENT SCREEN
+          ══════════════════════════════════════════════════ */}
           {checkoutStep === 'failed' && (
             <div className="p-6 sm:p-8 text-center space-y-4 my-auto">
               <div className="w-16 h-16 rounded-3xl bg-rose-500/10 text-rose-600 mx-auto flex items-center justify-center text-3xl">
@@ -281,7 +352,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   onClick={() => {
                     setPaymentMethod('cod');
                     setSimulateFailure(false);
-                    setCheckoutStep('checkout');
+                    setCheckoutStep('payment');
                   }}
                   className="flex-1 py-3 rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 text-xs font-bold hover:bg-stone-200 transition-colors"
                 >
@@ -291,7 +362,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             </div>
           )}
 
-          {/* VIEW: MAIN CHECKOUT STEP */}
+          {/* ══════════════════════════════════════════════════
+              VIEW: MAIN CHECKOUT STEP
+          ══════════════════════════════════════════════════ */}
           {checkoutStep === 'checkout' && (
             <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
               {/* SECTION 1: DELIVERY ADDRESS */}
@@ -455,112 +528,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </div>
               </div>
 
-              {/* SECTION 5: PAYMENT METHODS */}
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-wider text-stone-900 dark:text-stone-100 mb-2 flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4 text-orange-500" />
-                  <span>Payment Gateway</span>
-                </h3>
-                <div className="space-y-2">
-                  {/* Razorpay Test */}
-                  <label
-                    onClick={() => setPaymentMethod('razorpay')}
-                    className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
-                      paymentMethod === 'razorpay'
-                        ? 'border-orange-500 bg-orange-50/30 dark:bg-orange-950/20 shadow-sm'
-                        : 'border-stone-200 dark:border-stone-800 hover:border-stone-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-black text-xs">
-                        RZP
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
-                          <span>Razorpay Standard Gateway</span>
-                          <span className="px-1.5 py-0.2 rounded-full bg-blue-500/10 text-blue-600 text-[9px] font-black uppercase">
-                            Fast & Secure
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-stone-400">Credit / Debit Cards, NetBanking, Wallets</div>
-                      </div>
-                    </div>
-                    <span className="text-xs font-black text-stone-900 dark:text-stone-100">
-                      ₹{cartTotals.total}
-                    </span>
-                  </label>
-
-                  {/* UPI */}
-                  <label
-                    onClick={() => setPaymentMethod('upi')}
-                    className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
-                      paymentMethod === 'upi'
-                        ? 'border-orange-500 bg-orange-50/30 dark:bg-orange-950/20 shadow-sm'
-                        : 'border-stone-200 dark:border-stone-800 hover:border-stone-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-black text-xs">
-                        UPI
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-stone-900 dark:text-stone-100">
-                          Instant UPI (GPay, PhonePe, Paytm)
-                        </div>
-                        <div className="text-[10px] text-stone-400">Zero surcharge instant auto-transfer</div>
-                      </div>
-                    </div>
-                    <span className="text-xs font-black text-stone-900 dark:text-stone-100">
-                      ₹{cartTotals.total}
-                    </span>
-                  </label>
-
-                  {/* COD */}
-                  <label
-                    onClick={() => setPaymentMethod('cod')}
-                    className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
-                      paymentMethod === 'cod'
-                        ? 'border-orange-500 bg-orange-50/30 dark:bg-orange-950/20 shadow-sm'
-                        : 'border-stone-200 dark:border-stone-800 hover:border-stone-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-black text-xs">
-                        COD
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-stone-900 dark:text-stone-100">
-                          Cash on Delivery
-                        </div>
-                        <div className="text-[10px] text-stone-400">Pay cash or UPI scan at your door</div>
-                      </div>
-                    </div>
-                    <span className="text-xs font-black text-stone-900 dark:text-stone-100">
-                      ₹{cartTotals.total}
-                    </span>
-                  </label>
-                </div>
-
-                {/* Developer / reviewer simulation toggle */}
-                <div className="mt-2.5 flex items-center justify-between p-2.5 rounded-xl bg-stone-100 dark:bg-stone-800 text-[11px]">
-                  <span className="font-semibold text-stone-600 dark:text-stone-300">
-                    🧪 Test Simulation Mode:
-                  </span>
-                  <label className="flex items-center gap-1.5 cursor-pointer text-stone-700 dark:text-stone-300">
-                    <input
-                      type="checkbox"
-                      checked={simulateFailure}
-                      onChange={(e) => setSimulateFailure(e.target.checked)}
-                      className="rounded text-rose-500"
-                    />
-                    <span className={simulateFailure ? 'text-rose-600 font-bold' : ''}>
-                      Simulate Payment Failure
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* SECTION 6: BILL BREAKDOWN */}
+              {/* SECTION 5: BILL BREAKDOWN */}
               <div className="p-4 rounded-2xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 space-y-2 text-xs">
                 <h4 className="font-black text-stone-900 dark:text-stone-100 uppercase tracking-wider mb-2">
                   Bill Summary
@@ -612,7 +580,190 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             </div>
           )}
 
-          {/* Sticky Checkout CTA Footer */}
+          {/* ══════════════════════════════════════════════════
+              VIEW: PAYMENT METHOD SELECTION (NEW DEDICATED STEP)
+          ══════════════════════════════════════════════════ */}
+          {checkoutStep === 'payment' && (
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+
+              {/* Amount Banner */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-orange-500/10 via-rose-500/10 to-orange-500/10 border border-orange-200 dark:border-orange-900/50 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-orange-600 dark:text-orange-400">Total Payable</p>
+                  <p className="text-2xl font-black text-stone-900 dark:text-stone-100 mt-0.5">₹{cartTotals.total}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-stone-500">Delivering to</p>
+                  <p className="text-xs font-bold text-stone-700 dark:text-stone-300 max-w-[160px] truncate">
+                    {selectedAddress?.street}, {selectedAddress?.city}
+                  </p>
+                </div>
+              </div>
+
+              {/* Payment Method Cards */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-stone-400">Select Payment Method</p>
+
+                {/* ── COD Card ── */}
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('cod')}
+                  className={`w-full p-4 rounded-2xl border-2 text-left transition-all group relative overflow-hidden ${
+                    paymentMethod === 'cod'
+                      ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/30 shadow-lg shadow-amber-500/10'
+                      : 'border-stone-200 dark:border-stone-700 hover:border-amber-300 dark:hover:border-amber-700 bg-white dark:bg-stone-800/40'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    {/* Icon */}
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-all ${
+                      paymentMethod === 'cod'
+                        ? 'bg-amber-500 shadow-lg shadow-amber-500/30'
+                        : 'bg-amber-100 dark:bg-amber-900/30'
+                    }`}>
+                      <Banknote className={`w-7 h-7 ${paymentMethod === 'cod' ? 'text-white' : 'text-amber-600 dark:text-amber-400'}`} />
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-black text-stone-900 dark:text-stone-100">Cash on Delivery</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-[9px] font-black uppercase">
+                          No Advance Payment
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                        Pay with cash or UPI scan at your doorstep when the order arrives
+                      </p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <span className="text-[10px] text-stone-400 flex items-center gap-1">💵 Cash</span>
+                        <span className="text-[10px] text-stone-400 flex items-center gap-1">📱 UPI QR at door</span>
+                      </div>
+                    </div>
+
+                    {/* Radio */}
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                      paymentMethod === 'cod'
+                        ? 'border-amber-500 bg-amber-500'
+                        : 'border-stone-300 dark:border-stone-600'
+                    }`}>
+                      {paymentMethod === 'cod' && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+                  </div>
+                </button>
+
+                {/* ── Razorpay Card ── */}
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('razorpay')}
+                  className={`w-full p-4 rounded-2xl border-2 text-left transition-all group relative overflow-hidden ${
+                    paymentMethod === 'razorpay'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 shadow-lg shadow-blue-500/10'
+                      : 'border-stone-200 dark:border-stone-700 hover:border-blue-300 dark:hover:border-blue-700 bg-white dark:bg-stone-800/40'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    {/* Icon */}
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-all ${
+                      paymentMethod === 'razorpay'
+                        ? 'bg-blue-600 shadow-lg shadow-blue-500/30'
+                        : 'bg-blue-100 dark:bg-blue-900/30'
+                    }`}>
+                      <span className={`text-xl font-black ${paymentMethod === 'razorpay' ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`}>
+                        ₹
+                      </span>
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-black text-stone-900 dark:text-stone-100">Razorpay</span>
+                        <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 text-[9px] font-black uppercase">
+                          ⭐ Recommended
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                        Credit/Debit Cards, UPI, Net Banking, Wallets & more
+                      </p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <span className="text-[10px] text-stone-400">💳 Cards</span>
+                        <span className="text-[10px] text-stone-400">📲 UPI</span>
+                        <span className="text-[10px] text-stone-400">🏦 NetBanking</span>
+                        <span className="text-[10px] text-stone-400">👛 Wallets</span>
+                      </div>
+                    </div>
+
+                    {/* Radio */}
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                      paymentMethod === 'razorpay'
+                        ? 'border-blue-500 bg-blue-500'
+                        : 'border-stone-300 dark:border-stone-600'
+                    }`}>
+                      {paymentMethod === 'razorpay' && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+                  </div>
+                </button>
+
+                {/* ── UPI Direct Card ── */}
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('upi')}
+                  className={`w-full p-4 rounded-2xl border-2 text-left transition-all group relative overflow-hidden ${
+                    paymentMethod === 'upi'
+                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 shadow-lg shadow-emerald-500/10'
+                      : 'border-stone-200 dark:border-stone-700 hover:border-emerald-300 dark:hover:border-emerald-700 bg-white dark:bg-stone-800/40'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    {/* Icon */}
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-all ${
+                      paymentMethod === 'upi'
+                        ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30'
+                        : 'bg-emerald-100 dark:bg-emerald-900/30'
+                    }`}>
+                      <Smartphone className={`w-7 h-7 ${paymentMethod === 'upi' ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-black text-stone-900 dark:text-stone-100">UPI / GPay / PhonePe</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-[9px] font-black uppercase">
+                          Zero Fee
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                        Instant transfer via your preferred UPI app — no extra charges
+                      </p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <span className="text-[10px] text-stone-400">🔷 GPay</span>
+                        <span className="text-[10px] text-stone-400">🟣 PhonePe</span>
+                        <span className="text-[10px] text-stone-400">🔵 Paytm</span>
+                        <span className="text-[10px] text-stone-400">🔴 BHIM</span>
+                      </div>
+                    </div>
+
+                    {/* Radio */}
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                      paymentMethod === 'upi'
+                        ? 'border-emerald-500 bg-emerald-500'
+                        : 'border-stone-300 dark:border-stone-600'
+                    }`}>
+                      {paymentMethod === 'upi' && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Security Badge */}
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                <span className="text-[11px] text-stone-400">256-bit SSL encrypted • RBI compliant • PCI-DSS secure</span>
+              </div>
+            </div>
+          )}
+
+          {/* ── Sticky Checkout CTA Footer ── */}
           {checkoutStep === 'checkout' && (
             <div className="p-4 border-t border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/90 flex items-center justify-between gap-3 shrink-0">
               <div>
@@ -622,14 +773,51 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </span>
               </div>
               <button
-                onClick={handlePlaceOrder}
+                onClick={handleProceedToPayment}
                 disabled={isProcessing}
                 className="py-3 px-6 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white font-black text-xs shadow-lg shadow-orange-500/25 flex items-center gap-2 transition-all active:scale-[0.99]"
               >
                 <span>
-                  {currentUser.isGuest ? 'Sign In & Place Order' : `Pay & Place Order • ₹${cartTotals.total}`}
+                  {currentUser.isGuest ? 'Sign In & Continue' : 'Choose Payment'}
                 </span>
                 <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* ── Payment Confirmation Footer ── */}
+          {checkoutStep === 'payment' && (
+            <div className="p-4 border-t border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/90 shrink-0">
+              {/* Selected method summary */}
+              <div className="flex items-center justify-between mb-3 px-1">
+                <div className="flex items-center gap-2">
+                  {paymentMethod === 'cod' && <Banknote className="w-4 h-4 text-amber-500" />}
+                  {paymentMethod === 'razorpay' && <CreditCard className="w-4 h-4 text-blue-500" />}
+                  {paymentMethod === 'upi' && <Smartphone className="w-4 h-4 text-emerald-500" />}
+                  <span className="text-xs font-bold text-stone-700 dark:text-stone-300">
+                    {paymentMethodMeta[paymentMethod]?.label ?? paymentMethod.toUpperCase()}
+                  </span>
+                </div>
+                <span className="text-sm font-black text-stone-900 dark:text-stone-100">₹{cartTotals.total}</span>
+              </div>
+
+              <button
+                onClick={handlePlaceOrder}
+                disabled={isProcessing}
+                className={`w-full py-3.5 px-5 rounded-2xl font-black text-sm flex items-center justify-center gap-2.5 shadow-lg transition-all active:scale-[0.99] ${
+                  paymentMethod === 'cod'
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-amber-500/25'
+                    : paymentMethod === 'upi'
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 shadow-emerald-500/25'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/25'
+                } text-white`}
+              >
+                <Lock className="w-4 h-4" />
+                <span>
+                  {paymentMethod === 'cod'
+                    ? `Confirm Cash on Delivery • ₹${cartTotals.total}`
+                    : `Pay ₹${cartTotals.total} via ${paymentMethodMeta[paymentMethod]?.label ?? paymentMethod.toUpperCase()}`}
+                </span>
               </button>
             </div>
           )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppProvider, useAppStore, NotificationItem } from './store/useAppStore';
 import { Navbar } from './components/common/Navbar';
 import { HomePage } from './pages/HomePage';
@@ -18,7 +18,7 @@ import { ModelViewerModal } from './three/ModelViewerModal';
 import { SupportChatWidget } from './components/chat/SupportChatWidget';
 import { MobileBottomBar } from './components/common/MobileBottomBar';
 import { Address } from './types';
-import { CheckCircle2, AlertCircle, Info, Sparkles } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 
 interface ToastNotificationItemProps {
   notification: NotificationItem;
@@ -105,6 +105,7 @@ function AppContent() {
     customizingItem,
     closeCustomizationModal,
     currentUser,
+    addNotification,
   } = useAppStore();
 
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -113,13 +114,41 @@ function AppContent() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
   const [isAddressBookOpen, setIsAddressBookOpen] = useState<boolean>(false);
   const [isProfileEditorOpen, setIsProfileEditorOpen] = useState<boolean>(false);
+  const [isOrderVideoPlaying, setIsOrderVideoPlaying] = useState(false);
+
+  const prevUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (currentUser.isGuest || currentTab !== 'home') return;
-    if (currentUser.role === 'restaurant_owner') setCurrentTab('owner_dashboard');
-    else if (currentUser.role === 'delivery_partner') setCurrentTab('delivery_dashboard');
-    else if (currentUser.role === 'admin') setCurrentTab('admin_dashboard');
-    else setCurrentTab('customer_dashboard');
+    if (currentUser.isGuest) {
+      prevUserIdRef.current = null;
+      // If a guest lands on a private role dashboard, redirect to home
+      if (['admin_dashboard', 'owner_dashboard', 'delivery_dashboard', 'customer_dashboard', 'order_history'].includes(currentTab)) {
+        setCurrentTab('home');
+      }
+      return;
+    }
+    // Only redirect non-customer portal roles upon initial authentication
+    if (prevUserIdRef.current !== currentUser.id) {
+      prevUserIdRef.current = currentUser.id;
+      if (currentUser.role === 'restaurant_owner') setCurrentTab('owner_dashboard');
+      else if (currentUser.role === 'delivery_partner') setCurrentTab('delivery_dashboard');
+      else if (currentUser.role === 'admin') setCurrentTab('admin_dashboard');
+      else {
+        // Customer: if currently on an administrative/owner portal they don't have access to, return to home
+        if (['admin_dashboard', 'owner_dashboard', 'delivery_dashboard'].includes(currentTab)) {
+          setCurrentTab('home');
+        }
+      }
+    } else {
+      const roleRestrictedTabs: Record<string, string> = {
+        admin_dashboard: 'admin',
+        owner_dashboard: 'restaurant_owner',
+        delivery_dashboard: 'delivery_partner',
+      };
+      if (roleRestrictedTabs[currentTab] && roleRestrictedTabs[currentTab] !== currentUser.role) {
+        setCurrentTab('home');
+      }
+    }
   }, [currentUser.id, currentUser.isGuest, currentUser.role, currentTab]);
   const [showIntro, setShowIntro] = useState<boolean>(() => {
     try {
@@ -167,10 +196,9 @@ function AppContent() {
     setIsCheckoutOpen(true);
   };
 
-  const handleOrderCompleted = (newOrderId: string) => {
+  const handleOrderCompleted = (_orderId: string) => {
     setIsCheckoutOpen(false);
-    setCurrentTab('tracking');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setIsOrderVideoPlaying(true);
   };
 
   return (
@@ -206,49 +234,67 @@ function AppContent() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-24 md:pb-12">
-        {currentTab === 'home' && (
-          <HomePage
-            onSelectRestaurant={handleSelectRestaurant}
-            onExploreDishes={() => setCurrentTab('home')}
-            onViewFavorites={() => {
-              setCurrentTab('customer_dashboard');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-          />
-        )}
+        {(() => {
+          if (currentTab === 'restaurant_detail' || currentTab.startsWith('restaurant_')) {
+            return (
+              <RestaurantDetailPage
+                restaurantId={selectedRestaurantId || 'rest_1'}
+                onBack={() => setCurrentTab('home')}
+              />
+            );
+          }
 
-        {(currentTab === 'restaurant_detail' || currentTab.startsWith('restaurant_')) && (
-          <RestaurantDetailPage
-            restaurantId={selectedRestaurantId || 'rest_1'}
-            onBack={() => setCurrentTab('home')}
-          />
-        )}
+          if (currentTab === 'tracking') {
+            return <OrderTrackingPage onBackToHome={() => setCurrentTab('home')} />;
+          }
 
-        {currentTab === 'tracking' && (
-          <OrderTrackingPage onBackToHome={() => setCurrentTab('home')} />
-        )}
+          if (currentTab === 'owner_dashboard' && currentUser.role === 'restaurant_owner') {
+            return <OwnerDashboard />;
+          }
 
-        {currentTab === 'owner_dashboard' && currentUser.role === 'restaurant_owner' && <OwnerDashboard />}
+          if (currentTab === 'delivery_dashboard' && currentUser.role === 'delivery_partner') {
+            return <DeliveryDashboard />;
+          }
 
-        {currentTab === 'delivery_dashboard' && currentUser.role === 'delivery_partner' && <DeliveryDashboard />}
+          if (currentTab === 'admin_dashboard' && currentUser.role === 'admin') {
+            return <AdminDashboard />;
+          }
 
-        {currentTab === 'admin_dashboard' && currentUser.role === 'admin' && <AdminDashboard />}
+          if ((currentTab === 'customer_dashboard' || currentTab === 'order_history') && !currentUser.isGuest) {
+            return (
+              <CustomerDashboard
+                onSelectRestaurant={handleSelectRestaurant}
+                onOpenCart={() => setIsCartOpen(true)}
+                onTrackOrder={(order) => {
+                  setActiveTrackingOrder(order);
+                  setCurrentTab('tracking');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                onExploreDishes={() => {
+                  setCurrentTab('home');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                onOpenProfileEditor={() => setIsProfileEditorOpen(true)}
+              />
+            );
+          }
 
-        {(currentTab === 'customer_dashboard' || currentTab === 'order_history') && currentUser.role === 'customer' && (
-          <CustomerDashboard
-            onSelectRestaurant={handleSelectRestaurant}
-            onOpenCart={() => setIsCartOpen(true)}
-            onTrackOrder={(order) => {
-              setActiveTrackingOrder(order);
-              setCurrentTab('tracking');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onExploreDishes={() => {
-              setCurrentTab('home');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-          />
-        )}
+          // Fallback / Home: always renders HomePage so neither guest nor customer ever encounters a blank white screen!
+          return (
+            <HomePage
+              onSelectRestaurant={handleSelectRestaurant}
+              onExploreDishes={() => setCurrentTab('home')}
+              onViewFavorites={() => {
+                if (currentUser.isGuest) {
+                  addNotification('Sign in required', 'Please sign in to view your favorite restaurants and orders.', 'info');
+                } else {
+                  setCurrentTab('customer_dashboard');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+              }}
+            />
+          );
+        })()}
       </main>
 
       {/* Toast Notification Container (offset above chat widget) */}
@@ -275,6 +321,38 @@ function AppContent() {
         onClose={() => setIsCheckoutOpen(false)}
         onOrderSuccess={handleOrderCompleted}
       />
+
+      {isOrderVideoPlaying && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Order placed"
+        >
+          <div className="absolute inset-0 bg-stone-950/60 backdrop-blur-md" />
+          <div className="relative z-10 flex w-full max-w-4xl flex-col items-center gap-4">
+            <p className="text-center text-lg font-bold text-white drop-shadow sm:text-xl">
+              Order placed! Your delivery is on its way.
+            </p>
+            <video
+              className="max-h-[75vh] w-full rounded-2xl object-contain shadow-2xl"
+              src="/assets/delivery-order-celebration.mp4"
+              autoPlay
+              muted
+              playsInline
+              onEnded={() => setIsOrderVideoPlaying(false)}
+              onError={() => setIsOrderVideoPlaying(false)}
+            />
+            <button
+              type="button"
+              onClick={() => setIsOrderVideoPlaying(false)}
+              className="rounded-full bg-white/15 px-4 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/25"
+            >
+              Close video
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Address Book Modal */}
       <AddressBookModal
@@ -304,11 +382,12 @@ function AppContent() {
       {/* Global Footer */}
       <footer className="mt-auto border-t border-stone-200 dark:border-stone-800/80 bg-white/70 dark:bg-stone-900/70 backdrop-blur-md py-10 text-xs text-stone-500 dark:text-stone-400">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-xl bg-orange-500 flex items-center justify-center text-white font-black text-xs">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <span className="font-bold text-stone-800 dark:text-stone-200">FoodVerse</span>
+          <div className="flex items-center gap-3">
+            <img
+              src="/images/foodverse-logo.png"
+              alt="FoodVerse — Discover & Deliver"
+              className="h-12 w-auto max-w-[190px] object-contain"
+            />
             <span>• Next-Gen Food Discovery & Gourmet Delivery Engine</span>
           </div>
 

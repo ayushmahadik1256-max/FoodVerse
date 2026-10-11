@@ -25,9 +25,9 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ order, onClo
 
   if (!order) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = reportOrderIssue(order.id, issueType, description);
+    const res = await reportOrderIssue(order.id, issueType, description);
     if (res.success) {
       setResolution({ ticketId: res.ticketId, compensation: res.compensation });
     }

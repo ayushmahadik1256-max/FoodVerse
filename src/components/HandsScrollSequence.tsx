@@ -86,7 +86,7 @@ export const HandsScrollSequence: React.FC = () => {
   }, []);
 
   return (
-    <section ref={trackRef} aria-label="Scroll through the Taste and Go food sequence" className="relative left-1/2 w-screen -translate-x-1/2 h-[500vh]">
+    <section ref={trackRef} aria-label="Scroll through the Taste and Go food sequence" className="relative left-1/2 w-screen -translate-x-1/2 h-[300vh] sm:h-[400vh] lg:h-[500vh]">
       <div className="sticky top-16 h-[calc(100vh-4rem)] overflow-hidden bg-[#f3efe6]">
         <canvas ref={canvasRef} className="block h-full w-full" />
       </div>

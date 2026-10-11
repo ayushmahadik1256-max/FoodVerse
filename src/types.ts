@@ -26,6 +26,8 @@ export interface User {
   loyaltyPoints: number; // FoodVerse reward points
   walletBalance?: number;
   isGuest?: boolean;
+  isOnline?: boolean;
+  isAvailable?: boolean;
 }
 
 export type ModelType = 'burger' | 'pizza' | 'donut' | 'noodles' | 'drink' | 'taco' | 'biryani' | 'samosa' | 'curry' | 'dosa' | 'gulabjamun';

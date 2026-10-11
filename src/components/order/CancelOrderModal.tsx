@@ -27,9 +27,9 @@ export const CancelOrderModal: React.FC<CancelOrderModalProps> = ({ order, onClo
 
   const isEligible = order.status === 'placed' || order.status === 'accepted';
 
-  const handleConfirmCancel = () => {
+  const handleConfirmCancel = async () => {
     const finalReason = customReason.trim() || reason;
-    const res = cancelOrder(order.id, finalReason);
+    const res = await cancelOrder(order.id, finalReason);
     setResult(res);
   };
 

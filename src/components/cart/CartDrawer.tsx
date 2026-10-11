@@ -85,13 +85,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, onProce
   const handleCheckoutClick = () => {
     if (currentUser.isGuest) {
       openAuthModal('login', () => {
-        if (activeAddress) onProceedToCheckout(activeAddress);
+        onProceedToCheckout(activeAddress as any);
       });
       return;
     }
-    if (activeAddress) {
-      onProceedToCheckout(activeAddress);
-    }
+    onProceedToCheckout(activeAddress as any);
   };
 
   return (

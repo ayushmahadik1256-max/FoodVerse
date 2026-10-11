@@ -98,7 +98,7 @@ const SHOWCASE_DISHES: ShowcaseDish[] = [
     rating: 4.95,
     calories: 420,
     prepTime: '5-8 min',
-    image: 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?w=800&auto=format&fit=crop&q=80',
+    image: 'public/images/sweets/gulab_jamun.jpg',
     description: 'Slow-fried soft khoya spheres immersed in saffron rose-cardamom syrup, served with chilled creamy malai rabri and pistachio flakes.',
     tags: ['Pure Desi Ghee', 'Kashmiri Saffron', 'Chilled Rabri'],
   },

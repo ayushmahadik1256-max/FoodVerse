@@ -99,7 +99,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order, onClose }) =>
               </h4>
               <p className="font-bold text-stone-900 dark:text-stone-100">{order.restaurantName}</p>
               <p className="text-[11px] text-stone-500 mt-0.5">FSSAI Certified Commercial Kitchen</p>
-              <p className="text-[11px] text-stone-400 mt-0.5">Bengaluru Urban, KA</p>
+              <p className="text-[11px] text-stone-400 mt-0.5">Islampur, Sangli, MH</p>
             </div>
 
             <div className="p-3 rounded-2xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200/80 dark:border-stone-700/80">

@@ -23,14 +23,20 @@ import {
   HelpCircle,
   Star,
   Navigation,
+  PackageCheck,
+  Gift,
 } from 'lucide-react';
+
+import { fetchOrderById } from '../services/accountApi';
 
 interface OrderTrackingPageProps {
   onBackToHome: () => void;
 }
 
 export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({ onBackToHome }) => {
-  const { activeTrackingOrder, updateOrderStatus, orders, setActiveTrackingOrder, restaurants } = useAppStore();
+  const { currentUser, activeTrackingOrder, updateOrderStatus, orders, setActiveTrackingOrder, restaurants, addNotification, earnLoyaltyPoints } = useAppStore();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pointsClaimed, setPointsClaimed] = useState(false);
 
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
@@ -64,7 +70,33 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({ onBackToHo
   const currentIndex = stages.indexOf(order.status);
   const progressPercent = Math.round(((currentIndex + 1) / stages.length) * 100);
 
-  // Advance stage helper for testing and interactive preview
+  const canAdvanceStage = currentUser.role === 'admin' || currentUser.role === 'restaurant_owner' || currentUser.role === 'delivery_partner';
+
+  const handleManualRefresh = async () => {
+    try {
+      setIsRefreshing(true);
+      const latest = await fetchOrderById(order.id);
+      if (latest) {
+        setActiveTrackingOrder(latest);
+        addNotification('Telemetry Refreshed', `Status verified: ${latest.status.replace(/_/g, ' ')}`, 'info');
+      }
+    } catch {
+      addNotification('Refresh Note', 'Order telemetry is up to date.', 'info');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Customer-facing: mark as delivered & claim +13 loyalty points
+  const handleCustomerDeliveryConfirm = async () => {
+    if (pointsClaimed) return;
+    await updateOrderStatus(order.id, 'delivered');
+    earnLoyaltyPoints(13, 'delivery confirmation bonus');
+    setPointsClaimed(true);
+    addNotification('🎉 Delivered & +13 Pts Claimed!', 'Order marked as delivered. 13 bonus FoodVerse Points added to your wallet!', 'success');
+  };
+
+  // Advance stage helper for authorized operations
   const handleAdvanceStage = () => {
     const nextIdx = Math.min(stages.length - 1, currentIndex + 1);
     const nextStatus = stages[nextIdx];
@@ -122,15 +154,75 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({ onBackToHo
           </div>
         )}
 
+        {/* ── CUSTOMER: Delivery Arrived Banner + Claim Button ── */}
+        {currentUser.role === 'customer' && order.status !== 'delivered' && (
+          <div className="w-full mt-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-400 dark:border-amber-600 flex flex-col sm:flex-row items-center justify-between gap-3 animate-pulse">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🛵</span>
+              <div>
+                <p className="text-sm font-black text-amber-800 dark:text-amber-200">
+                  {order.status === 'out_for_delivery' ? 'Your courier is en route!' : 'Order Dispatched & Tracking Active'}
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  When delivery reaches your doorstep, tap to confirm &amp; instantly claim +13 reward points.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleCustomerDeliveryConfirm}
+              disabled={pointsClaimed}
+              className={`shrink-0 flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-sm shadow-lg transition-all active:scale-95 ${
+                pointsClaimed
+                  ? 'bg-emerald-500 text-white cursor-not-allowed'
+                  : 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/30 hover:-translate-y-0.5 cursor-pointer'
+              }`}
+            >
+              {pointsClaimed ? (
+                <><CheckCircle2 className="w-4 h-4" /><span>Claimed ✓</span></>
+              ) : (
+                <><PackageCheck className="w-4 h-4" /><span>Delivered &amp; Claim +13 Pts</span></>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* ── CUSTOMER: Already delivered — show claim button if not yet claimed ── */}
+        {currentUser.role === 'customer' && order.status === 'delivered' && !pointsClaimed && (
+          <div className="w-full mt-3 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🎉</span>
+              <div>
+                <p className="text-sm font-black text-emerald-800 dark:text-emerald-200">Order Delivered!</p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400">Claim your +13 loyalty bonus points for this delivery.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => { earnLoyaltyPoints(13, 'delivery confirmation bonus'); setPointsClaimed(true); addNotification('🎉 +13 Pts Claimed!', '13 FoodVerse Points added to your wallet!', 'success'); }}
+              className="shrink-0 flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-sm bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/25 transition-all active:scale-95"
+            >
+              <Gift className="w-4 h-4" />
+              <span>Claim +13 Pts</span>
+            </button>
+          </div>
+        )}
+
         {/* Action Buttons Bar */}
         <div className="flex flex-wrap items-center gap-2">
-          {order.status !== 'delivered' && (
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-700 dark:text-stone-300 text-xs font-bold transition-all cursor-pointer"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Checking...' : 'Live Telemetry Sync'}</span>
+          </button>
+
+          {canAdvanceStage && order.status !== 'delivered' && (
             <button
               onClick={handleAdvanceStage}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold shadow-md shadow-orange-500/20 transition-all active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold shadow-md shadow-orange-500/20 transition-all active:scale-95 cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Simulate: {stages[currentIndex + 1]?.replace(/_/g, ' ') || 'complete'}</span>
+              <span>Operator: Advance to {stages[currentIndex + 1]?.replace(/_/g, ' ') || 'complete'}</span>
             </button>
           )}
 
@@ -188,8 +280,11 @@ export const OrderTrackingPage: React.FC<OrderTrackingPageProps> = ({ onBackToHo
               <div className="flex items-center gap-2">
                 <Bike className="w-5 h-5 text-orange-500" />
                 <div>
-                  <h3 className="text-base font-bold text-stone-900 dark:text-stone-100">
-                    Live Route Telemetry
+                  <h3 className="text-base font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                    <span>Route Telemetry</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
+                      {order.currentLocation ? 'Live Courier GPS' : 'Estimated Baseline'}
+                    </span>
                   </h3>
                   <p className="text-xs text-stone-500 dark:text-stone-400">
                     Kitchen ➔ Courier Partner ➔ {order.deliveryAddress.street}

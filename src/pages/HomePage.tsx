@@ -438,10 +438,10 @@ export const HomePage: React.FC<HomePageProps> = ({ onSelectRestaurant, onViewFa
             </div>
             <div>
               <h2 className="text-2xl font-extrabold text-stone-900 dark:text-stone-100">
-                Top Gourmet Kitchens ({sortedRestaurants.length})
+                Hotels &amp; Restaurants in Islampur ({sortedRestaurants.length})
               </h2>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                Handcrafted menus curated for discerning tastes
+                Only authentic restaurants from Islampur City, Taluka Walwa, Dist. Sangli
               </p>
             </div>
           </div>

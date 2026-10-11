@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { getPlatformUsers, PlatformUser, setPlatformUserRole } from '../services/accountApi';
+import { getPlatformUsers, PlatformUser, setPlatformUserRole, setRestaurantOwner } from '../services/accountApi';
 import {
   ShieldAlert,
   CheckCircle2,
@@ -31,9 +31,8 @@ export const AdminDashboard: React.FC = () => {
   const [usersError, setUsersError] = useState('');
 
   useEffect(() => {
-    if (activeTab !== 'users') return;
     getPlatformUsers().then(setPlatformUsers).catch((error) => setUsersError(error instanceof Error ? error.message : 'Could not load accounts.'));
-  }, [activeTab]);
+  }, []);
 
   const changeRole = async (uid: string, role: Exclude<PlatformUser['role'], 'admin'>) => {
     try {
@@ -41,6 +40,15 @@ export const AdminDashboard: React.FC = () => {
       setPlatformUsers((users) => users.map((user) => user.id === uid ? { ...user, role } : user));
     } catch (error) {
       setUsersError(error instanceof Error ? error.message : 'Could not update account role.');
+    }
+  };
+
+  const handleAssignOwner = async (restaurantId: string, ownerId: string) => {
+    try {
+      await setRestaurantOwner(restaurantId, ownerId);
+      addNotification('Owner Assigned', 'Restaurant owner assigned successfully.', 'success');
+    } catch (err) {
+      addNotification('Assignment Failed', err instanceof Error ? err.message : 'Could not assign owner.', 'warning');
     }
   };
 
@@ -174,6 +182,7 @@ export const AdminDashboard: React.FC = () => {
                   <th className="pb-3 font-semibold">City</th>
                   <th className="pb-3 font-semibold">Rating</th>
                   <th className="pb-3 font-semibold">Status</th>
+                  <th className="pb-3 font-semibold">Assigned Owner</th>
                   <th className="pb-3 font-semibold text-right">Verification Action</th>
                 </tr>
               </thead>
@@ -199,6 +208,22 @@ export const AdminDashboard: React.FC = () => {
                       >
                         {r.isApproved ? 'Approved' : 'Pending Verification'}
                       </span>
+                    </td>
+                    <td className="py-3.5">
+                      <select
+                        value={r.ownerId || ''}
+                        onChange={(e) => handleAssignOwner(r.id, e.target.value)}
+                        className="text-[11px] font-bold px-2 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700"
+                      >
+                        <option value="">Unassigned</option>
+                        {platformUsers
+                          .filter((u) => u.role === 'restaurant_owner' || u.role === 'admin')
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name || u.email} ({u.role})
+                            </option>
+                          ))}
+                      </select>
                     </td>
                     <td className="py-3.5 text-right">
                       {r.isApproved ? (
